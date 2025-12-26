@@ -110,15 +110,22 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
         });
       } else if (data.gateway === 'airpay') {
         // Airpay payment flow
+        console.log('=== AIRPAY PAYMENT FLOW ===');
+        console.log('Full backend response:', data);
+
         const { airpay_url, ...airpayParams } = data;
 
         if (!airpay_url) {
           throw new Error('Missing required Airpay URL from backend');
         }
 
+        console.log('Airpay URL:', airpay_url);
+        console.log('Airpay Params to send:', airpayParams);
+
         form.action = airpay_url;
 
         // Add Airpay parameters as hidden inputs (exclude gateway and airpay_url)
+        const formParams = {};
         Object.entries(airpayParams).forEach(([key, value]) => {
           if (key !== 'gateway' && value !== undefined && value !== null) {
             const input = document.createElement('input');
@@ -126,8 +133,12 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
             input.name = key;
             input.value = String(value);
             form.appendChild(input);
+            formParams[key] = String(value);
           }
         });
+
+        console.log('Form params being submitted:', formParams);
+        console.log('Form HTML:', form.innerHTML);
       } else {
         // PayU payment flow
         const { hash, payuUrl, merchantKey } = data;

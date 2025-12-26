@@ -224,6 +224,7 @@ def build_payment_request(
     uid = hashlib.sha256(f"{username}{order_id}{today}".encode('utf-8')).hexdigest()
 
     # Build request parameters (matching exact Airpay API documentation)
+    # Field order matters for form submission
     payment_params = {
         'buyerEmail': buyer_email,
         'buyerPhone': buyer_phone,
@@ -239,11 +240,15 @@ def build_payment_request(
         'UID': uid,
         'privatekey': privatekey,
         'mercid': merchant_id,
+        'chmod': '',  # Payment mode - empty means show all available options
         'kittype': 'inline',  # Required field - inline integration
         'checksum': checksum,
         'currency': currency,
         'isocurrency': iso_currency,
+        'token': '',  # Empty token field (not using tokenization)
     }
+
+    print(f"[AIRPAY DEBUG] Final payment params: {payment_params}")
 
     return payment_params
 
