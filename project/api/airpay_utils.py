@@ -100,6 +100,24 @@ class AirpayChecksum:
         return is_valid, merchant_secure_hash
 
 
+def sanitize_airpay_name(name: str) -> str:
+    """
+    Sanitize name field for Airpay - must be alphanumeric with spaces only
+    Regex: ^[A-Za-z\d\s]+$
+    """
+    import re
+    if not name:
+        return "User"
+
+    # Remove special characters, keep only letters, numbers, and spaces
+    sanitized = re.sub(r'[^A-Za-z0-9\s]', '', name)
+
+    # Remove extra spaces
+    sanitized = ' '.join(sanitized.split())
+
+    return sanitized if sanitized else "User"
+
+
 def build_payment_request(
     buyer_email: str,
     buyer_first_name: str,
@@ -128,53 +146,103 @@ def build_payment_request(
     Returns:
         Dictionary of payment parameters to send to Airpay
     """
+    import re
+
     today = datetime.now().strftime("%Y-%m-%d")
 
+    # Sanitize names to meet Airpay requirements (alphanumeric + spaces only)
+    buyer_first_name = sanitize_airpay_name(buyer_first_name)
+    buyer_last_name = sanitize_airpay_name(buyer_last_name)
+
+    # Ensure buyer_email is not empty (set to empty string if None)
+    if not buyer_email:
+        buyer_email = ''
+
+    # Ensure buyer_phone is not empty (use dummy if empty as per API)
+    if not buyer_phone:
+        buyer_phone = '0000000000'
+
     # Build data string for checksum (order matters!)
-    # Based on sendtoairpay.py logic
+    # Based on sendtoairpay.py lines 146-149
+    # For SIMPLE TRANSACTION (not subscription), UID is NOT included in checksum
+    # Format: buyerEmail + buyerFirstName + buyerLastName + [buyerAddress + buyerCity + buyerState + buyerCountry] + amount + orderid
+
+    print(f"[AIRPAY DEBUG] Checksum calculation inputs:")
+    print(f"  buyerEmail: '{buyer_email}'")
+    print(f"  buyerFirstName: '{buyer_first_name}'")
+    print(f"  buyerLastName: '{buyer_last_name}'")
+    print(f"  buyerAddress: '{buyer_address}'")
+    print(f"  buyerCity: '{buyer_city}'")
+    print(f"  buyerState: '{buyer_state}'")
+    print(f"  buyerCountry: '{buyer_country}'")
+    print(f"  amount: '{amount}'")
+    print(f"  orderid: '{order_id}'")
+    print(f"  today: '{today}'")
+
     if buyer_address and buyer_city and buyer_state and buyer_country:
+        # With address - as per reference implementation
         all_data = (
             buyer_email + buyer_first_name + buyer_last_name +
             buyer_address + buyer_city + buyer_state + buyer_country +
             amount + order_id
         )
+        print(f"[AIRPAY DEBUG] Using WITH ADDRESS checksum format")
     else:
+        # Without address - as per reference implementation
         all_data = (
             buyer_email + buyer_first_name + buyer_last_name +
             amount + order_id
         )
+        print(f"[AIRPAY DEBUG] Using WITHOUT ADDRESS checksum format")
+
+    print(f"[AIRPAY DEBUG] alldata: '{all_data}'")
 
     # Generate privatekey using encryption
+    # Format: hash('sha256', secret.'@'.username.':|:'.password)
     checksum_obj = AirpayChecksum()
     privatekey = checksum_obj.encrypt(
         f"{username}:|:{password}",
         secret_key
     )
+    print(f"[AIRPAY DEBUG] privatekey: {privatekey}")
 
     # Generate SHA256 key for checksum
+    # Format: hash('SHA256', username.'~:~'.password)
     key_sha256 = checksum_obj.encrypt_sha256(f"{username}~:~{password}")
+    print(f"[AIRPAY DEBUG] key_sha256: {key_sha256}")
 
     # Calculate checksum
-    checksum = checksum_obj.calculate_checksum_sha256(all_data + today, key_sha256)
+    # Format: hash('SHA256', key.'@'.alldata.date)
+    checksum_data = all_data + today
+    print(f"[AIRPAY DEBUG] checksum_data (alldata+today): '{checksum_data}'")
 
-    # Build request parameters
+    checksum = checksum_obj.calculate_checksum_sha256(checksum_data, key_sha256)
+    print(f"[AIRPAY DEBUG] Final checksum: {checksum}")
+
+    # Generate UID (unique user identifier) - AFTER checksum calculation
+    # UID is sent as parameter but NOT included in simple transaction checksum
+    uid = hashlib.sha256(f"{username}{order_id}{today}".encode('utf-8')).hexdigest()
+
+    # Build request parameters (matching exact Airpay API documentation)
     payment_params = {
-        'privatekey': privatekey,
-        'mercid': merchant_id,
-        'orderid': order_id,
-        'currency': currency,
-        'isocurrency': iso_currency,
-        'checksum': checksum,
         'buyerEmail': buyer_email,
         'buyerPhone': buyer_phone,
         'buyerFirstName': buyer_first_name,
         'buyerLastName': buyer_last_name,
-        'buyerAddress': buyer_address,
-        'buyerCity': buyer_city,
-        'buyerState': buyer_state,
-        'buyerCountry': buyer_country,
-        'buyerPinCode': buyer_pincode,
+        'buyerAddress': buyer_address if buyer_address else '',
+        'buyerCity': buyer_city if buyer_city else '',
+        'buyerState': buyer_state if buyer_state else '',
+        'buyerCountry': buyer_country if buyer_country else '',
+        'buyerPinCode': buyer_pincode if buyer_pincode else '',
+        'orderid': order_id,
         'amount': amount,
+        'UID': uid,
+        'privatekey': privatekey,
+        'mercid': merchant_id,
+        'kittype': 'inline',  # Required field - inline integration
+        'checksum': checksum,
+        'currency': currency,
+        'isocurrency': iso_currency,
     }
 
     return payment_params

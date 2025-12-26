@@ -17,6 +17,94 @@ from .airpay_utils import (
 
 payments_bp = Blueprint('payments', __name__)
 
+@payments_bp.route('/test-airpay-checksum', methods=['GET'])
+def test_airpay_checksum():
+    """
+    Test endpoint to verify Airpay checksum calculation
+    Access at: /api/test-airpay-checksum
+    """
+    import hashlib
+    from datetime import datetime
+    from flask import current_app
+
+    # Test data
+    buyer_email = "test@example.com"
+    buyer_first_name = "Test"
+    buyer_last_name = "User"
+    amount = "199.00"
+    order_id = "TXN123456789"
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # Get config
+    merchant_id = current_app.config.get('AIRPAY_MERCHANT_ID', 'NOT SET')
+    username = current_app.config.get('AIRPAY_USERNAME', 'NOT SET')
+    password = current_app.config.get('AIRPAY_PASSWORD', 'NOT SET')
+    secret_key = current_app.config.get('AIRPAY_SECRET_KEY', 'NOT SET')
+
+    # Build alldata
+    alldata = buyer_email + buyer_first_name + buyer_last_name + amount + order_id
+
+    # Generate privatekey
+    privatekey_data = f"{secret_key}@{username}:|:{password}"
+    privatekey = hashlib.sha256(privatekey_data.encode('utf-8')).hexdigest()
+
+    # Generate key_sha256
+    key_data = f"{username}~:~{password}"
+    key_sha256 = hashlib.sha256(key_data.encode('utf-8')).hexdigest()
+
+    # Calculate checksum
+    checksum_data = alldata + today
+    checksum_input = f"{key_sha256}@{checksum_data}"
+    checksum = hashlib.sha256(checksum_input.encode('utf-8')).hexdigest()
+
+    # Generate UID
+    uid = hashlib.sha256(f"{username}{order_id}{today}".encode('utf-8')).hexdigest()
+
+    return jsonify({
+        "test_data": {
+            "buyerEmail": buyer_email,
+            "buyerFirstName": buyer_first_name,
+            "buyerLastName": buyer_last_name,
+            "amount": amount,
+            "orderid": order_id,
+            "today": today
+        },
+        "config_status": {
+            "merchant_id": merchant_id,
+            "username": username,
+            "password": "SET" if password != "NOT SET" and password else "NOT SET",
+            "secret_key": "SET" if secret_key != "NOT SET" and secret_key else "NOT SET"
+        },
+        "calculations": {
+            "alldata": alldata,
+            "privatekey": privatekey,
+            "key_sha256": key_sha256,
+            "checksum_data": checksum_data,
+            "checksum": checksum,
+            "UID": uid
+        },
+        "airpay_params": {
+            "buyerEmail": buyer_email,
+            "buyerPhone": "0000000000",
+            "buyerFirstName": buyer_first_name,
+            "buyerLastName": buyer_last_name,
+            "buyerAddress": "",
+            "buyerCity": "",
+            "buyerState": "",
+            "buyerCountry": "",
+            "buyerPinCode": "",
+            "orderid": order_id,
+            "amount": amount,
+            "UID": uid,
+            "privatekey": privatekey,
+            "mercid": merchant_id,
+            "kittype": "inline",
+            "checksum": checksum,
+            "currency": "356",
+            "isocurrency": "INR"
+        }
+    }), 200
+
 def sanitize_payer_name(name):
     """
     Sanitize payer name for SabPaisa gateway
@@ -298,16 +386,25 @@ def get_payu_hash():
     """
     try:
         data = request.get_json()
+        print(f"\n{'='*60}")
+        print(f"[PAYMENT HASH DEBUG] Received request")
+        print(f"{'='*60}")
 
         if not data:
+            print("[PAYMENT HASH DEBUG] ERROR: No data provided")
             return jsonify({"error": "No data provided"}), 400
+
+        print(f"[PAYMENT HASH DEBUG] Request data: {data}")
 
         required_fields = ['txnid', 'amount', 'productinfo', 'firstname', 'email']
         if not all(field in data for field in required_fields):
+            missing = [f for f in required_fields if f not in data]
+            print(f"[PAYMENT HASH DEBUG] ERROR: Missing required fields: {missing}")
             return jsonify({"error": "Missing required fields"}), 400
 
         # Get selected gateway (default to PayU for backward compatibility)
         gateway = data.get('gateway', 'payu').lower()
+        print(f"[PAYMENT HASH DEBUG] Selected gateway: {gateway}")
 
         if gateway == 'sabpaisa':
             # SabPaisa payment gateway
@@ -350,22 +447,35 @@ def get_payu_hash():
             }), 200
         elif gateway == 'airpay':
             # Airpay payment gateway
+            print(f"[PAYMENT HASH DEBUG] Processing Airpay payment")
+            print(f"[PAYMENT HASH DEBUG] Airpay config check:")
+            print(f"  MERCHANT_ID: {current_app.config.get('AIRPAY_MERCHANT_ID', 'NOT SET')}")
+            print(f"  USERNAME: {current_app.config.get('AIRPAY_USERNAME', 'NOT SET')}")
+            print(f"  PASSWORD: {'SET' if current_app.config.get('AIRPAY_PASSWORD') else 'NOT SET'}")
+            print(f"  SECRET_KEY: {'SET' if current_app.config.get('AIRPAY_SECRET_KEY') else 'NOT SET'}")
+            print(f"  BASE_URL: {current_app.config.get('AIRPAY_BASE_URL', 'NOT SET')}")
+
             # Split buyer name into first and last name
             name_parts = data['firstname'].split(' ', 1)
             buyer_first_name = name_parts[0]
             buyer_last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
 
+            print(f"[PAYMENT HASH DEBUG] Name split: '{data['firstname']}' -> first='{buyer_first_name}', last='{buyer_last_name}'")
+
             # Build Airpay payment request for subscription
+            # Note: For subscription payments, we don't have real address data
+            # So we set all address fields to empty for simpler checksum calculation
+            print(f"[PAYMENT HASH DEBUG] Calling build_airpay_request...")
             airpay_params = build_airpay_request(
                 buyer_email=data['email'],
                 buyer_first_name=buyer_first_name,
                 buyer_last_name=buyer_last_name,
                 buyer_phone=data.get('phone', '0000000000'),
-                buyer_address='Subscription',
+                buyer_address='',  # Empty - will use simple checksum format
                 buyer_city='',
                 buyer_state='',
-                buyer_country='India',
-                buyer_pincode='000000',
+                buyer_country='',
+                buyer_pincode='',
                 amount=f"{float(data['amount']):.2f}",
                 order_id=data['txnid'],
                 currency='356',  # INR currency code
@@ -376,9 +486,13 @@ def get_payu_hash():
                 secret_key=current_app.config['AIRPAY_SECRET_KEY'],
             )
 
+            print(f"[PAYMENT HASH DEBUG] Airpay params generated successfully")
+            print(f"[PAYMENT HASH DEBUG] Params keys: {list(airpay_params.keys())}")
+
             airpay_params['gateway'] = 'airpay'
             airpay_params['airpay_url'] = current_app.config['AIRPAY_BASE_URL']
 
+            print(f"[PAYMENT HASH DEBUG] Returning Airpay params to frontend")
             return jsonify(airpay_params), 200
         else:
             # PayU payment gateway (default)
