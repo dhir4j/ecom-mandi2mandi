@@ -125,9 +125,13 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
         form.action = airpay_url;
 
         // Add Airpay parameters as hidden inputs (exclude gateway and airpay_url)
+        // IMPORTANT: checksum MUST be added LAST (Airpay requirement)
         const formParams = {};
+        const checksumValue = airpayParams.checksum;
+
         Object.entries(airpayParams).forEach(([key, value]) => {
-          if (key !== 'gateway' && value !== undefined && value !== null) {
+          // Skip gateway, airpay_url, and checksum (checksum will be added last)
+          if (key !== 'gateway' && key !== 'checksum' && value !== undefined && value !== null) {
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = key;
@@ -137,8 +141,19 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
           }
         });
 
+        // Add checksum as the LAST field
+        if (checksumValue) {
+          const checksumInput = document.createElement('input');
+          checksumInput.type = 'hidden';
+          checksumInput.name = 'checksum';
+          checksumInput.value = String(checksumValue);
+          form.appendChild(checksumInput);
+          formParams['checksum'] = String(checksumValue);
+        }
+
         console.log('Form params being submitted:', formParams);
         console.log('Form HTML:', form.innerHTML);
+        console.log('⚠️ Note: checksum was added as LAST field (Airpay requirement)');
       } else {
         // PayU payment flow
         const { hash, payuUrl, merchantKey } = data;
