@@ -1,0 +1,732 @@
+from flask import Blueprint, request, jsonify, current_app, redirect
+from flask_login import login_required, current_user
+import uuid
+import hashlib
+import re
+from . import db
+from .models import Order, Inquiry
+from .sabpaisa_utils import (
+    build_payment_request,
+    create_encrypted_request,
+    parse_callback_response
+)
+from .airpay_utils import (
+    build_payment_request as build_airpay_request,
+    validate_callback_response as validate_airpay_response
+)
+
+payments_bp = Blueprint('payments', __name__)
+
+def sanitize_payer_name(name):
+    """
+    Sanitize payer name for SabPaisa gateway
+    - Removes special characters that SabPaisa doesn't allow
+    - If name looks like an email, extracts the username part
+    - Returns only alphanumeric characters and spaces
+    """
+    if not name:
+        return "Customer"
+
+    # If it's an email address, extract the part before @
+    if '@' in name:
+        name = name.split('@')[0]
+
+    # Remove special characters, keep only letters, numbers, and spaces
+    sanitized = re.sub(r'[^a-zA-Z0-9\s]', '', name)
+
+    # Remove extra spaces and capitalize
+    sanitized = ' '.join(sanitized.split()).title()
+
+    # If after sanitization the name is empty, return a default
+    return sanitized if sanitized else "Customer"
+
+def generate_hash(params, salt):
+    """Generate PayU payment hash"""
+    # Extract UDF fields (udf1 through udf10)
+    udf1 = params.get('udf1', '')
+    udf2 = params.get('udf2', '')
+    udf3 = params.get('udf3', '')
+    udf4 = params.get('udf4', '')
+    udf5 = params.get('udf5', '')
+    udf6 = params.get('udf6', '')
+    udf7 = params.get('udf7', '')
+    udf8 = params.get('udf8', '')
+    udf9 = params.get('udf9', '')
+    udf10 = params.get('udf10', '')
+
+    hash_string = f"{params['key']}|{params['txnid']}|{params['amount']}|{params['productinfo']}|{params['firstname']}|{params['email']}|{udf1}|{udf2}|{udf3}|{udf4}|{udf5}|{udf6}|{udf7}|{udf8}|{udf9}|{udf10}|{salt}"
+    return hashlib.sha512(hash_string.encode('utf-8')).hexdigest().lower()
+
+def verify_hash(params, salt):
+    """Verify PayU response hash"""
+    # Extract UDF fields from response
+    udf1 = params.get('udf1', '')
+    udf2 = params.get('udf2', '')
+    udf3 = params.get('udf3', '')
+    udf4 = params.get('udf4', '')
+    udf5 = params.get('udf5', '')
+    udf6 = params.get('udf6', '')
+    udf7 = params.get('udf7', '')
+    udf8 = params.get('udf8', '')
+    udf9 = params.get('udf9', '')
+    udf10 = params.get('udf10', '')
+
+    hash_string = f"{salt}|{params.get('status')}||||||||||{udf10}|{udf9}|{udf8}|{udf7}|{udf6}|{udf5}|{udf4}|{udf3}|{udf2}|{udf1}|{params.get('email')}|{params.get('firstname')}|{params.get('productinfo')}|{params.get('amount')}|{params.get('txnid')}|{params.get('key')}"
+    return hashlib.sha512(hash_string.encode('utf-8')).hexdigest().lower()
+
+@payments_bp.route('/initiate-payment', methods=['POST'])
+@login_required
+def initiate_payment():
+    data = request.get_json()
+
+    required_fields = [
+        'amount', 'productName', 'quantity', 'unit', 'totalPrice',
+        'paymentOption', 'buyerName', 'mobile',
+        'pincode', 'addressLine1', 'city', 'state'
+    ]
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    # Get selected gateway (default to PayU for backward compatibility)
+    gateway = data.get('gateway', 'payu').lower()
+
+    txnid = str(uuid.uuid4())
+
+    # Create the order and save it to the DB with a 'Pending' status
+    try:
+        new_order = Order(
+            user_id=current_user.id,
+            product_name=data['productName'],
+            quantity=float(data['quantity']),
+            unit=data['unit'],
+            total_price=float(data['totalPrice']),
+            amount_paid=float(data['amount']),
+            payment_option=data['paymentOption'],
+            utr_code=txnid, # Temporarily use txnid for UTR
+            buyer_name=data['buyerName'],
+            buyer_mobile=data['mobile'],
+            pincode=data['pincode'],
+            address_line_1=data['addressLine1'],
+            address_line_2=data.get('addressLine2', ''),
+            city=data['city'],
+            state=data['state'],
+            status='Pending'
+        )
+        db.session.add(new_order)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create order: {str(e)}"}), 500
+
+    try:
+        if gateway == 'sabpaisa':
+            # SabPaisa payment gateway
+            client_code = current_app.config['SABPAISA_CLIENT_CODE']
+
+            # Log for debugging
+            print(f"[SABPAISA DEBUG] Client Code: {client_code}")
+            print(f"[SABPAISA DEBUG] Base URL: {current_app.config['SABPAISA_BASE_URL']}")
+
+            # Sanitize payer name to remove special characters
+            sanitized_name = sanitize_payer_name(current_user.name)
+
+            # Build parameter string (clientCode must be in BOTH encData AND as separate form field)
+            params_str = build_payment_request(
+                payer_name=sanitized_name,
+                payer_email=current_user.email,
+                payer_mobile=data['mobile'],
+                client_txn_id=txnid,
+                amount=float(data['amount']),
+                client_code=client_code,
+                trans_username=current_app.config['SABPAISA_USERNAME'],
+                trans_password=current_app.config['SABPAISA_PASSWORD'],
+                callback_url='https://www.mandi.ramhotravels.com/api/sabpaisa-payment-success',
+                udf1=data['productName']  # Store product name in UDF1
+            )
+
+            print(f"[SABPAISA DEBUG] Params string (first 200 chars): {params_str[:200]}")
+
+            # Encrypt the request
+            enc_data = create_encrypted_request(
+                params_str,
+                current_app.config['SABPAISA_AUTH_KEY'],
+                current_app.config['SABPAISA_AUTH_IV']
+            )
+
+            print(f"[SABPAISA DEBUG] Encrypted data length: {len(enc_data)}")
+            print(f"[SABPAISA DEBUG] Encrypted data (first 50 chars): {enc_data[:50]}")
+
+            return jsonify({
+                'gateway': 'sabpaisa',
+                'sabpaisa_url': current_app.config['SABPAISA_BASE_URL'],
+                'encData': enc_data,
+                'clientCode': client_code
+            })
+        elif gateway == 'airpay':
+            # Airpay payment gateway
+            # Split buyer name into first and last name
+            name_parts = current_user.name.split(' ', 1)
+            buyer_first_name = name_parts[0]
+            buyer_last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
+
+            # Build Airpay payment request
+            airpay_params = build_airpay_request(
+                buyer_email=current_user.email or "",
+                buyer_first_name=buyer_first_name,
+                buyer_last_name=buyer_last_name,
+                buyer_phone=data['mobile'],
+                buyer_address=data['addressLine1'],
+                buyer_city=data['city'],
+                buyer_state=data['state'],
+                buyer_country='India',
+                buyer_pincode=data['pincode'],
+                amount=f"{float(data['amount']):.2f}",
+                order_id=txnid,
+                currency='356',  # INR currency code
+                iso_currency='INR',
+                merchant_id=current_app.config['AIRPAY_MERCHANT_ID'],
+                username=current_app.config['AIRPAY_USERNAME'],
+                password=current_app.config['AIRPAY_PASSWORD'],
+                secret_key=current_app.config['AIRPAY_SECRET_KEY'],
+            )
+
+            airpay_params['gateway'] = 'airpay'
+            airpay_params['airpay_url'] = current_app.config['AIRPAY_BASE_URL']
+
+            return jsonify(airpay_params)
+        else:
+            # PayU payment gateway (default)
+            payu_params = {
+                'key': current_app.config['PAYU_KEY'],
+                'txnid': txnid,
+                'amount': str(data['amount']),
+                'productinfo': data['productName'],
+                'firstname': current_user.name,
+                'email': current_user.email,
+                'phone': data['mobile'],
+                'surl': 'https://www.mandi.ramhotravels.com/api/payment-success',
+                'furl': 'https://www.mandi.ramhotravels.com/api/payment-failure',
+            }
+
+            # Generate hash
+            payment_hash = generate_hash(payu_params, current_app.config['PAYU_SALT'])
+            payu_params['hash'] = payment_hash
+            payu_params['gateway'] = 'payu'
+
+            # Use production URL
+            payu_params['payu_url'] = 'https://secure.payu.in/_payment'
+
+            return jsonify(payu_params)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@payments_bp.route('/payment-success', methods=['POST'])
+def payment_success():
+    """Handle successful payment callback from PayU"""
+    payu_data = request.form.to_dict()
+    
+    # Verify hash
+    try:
+        received_hash = payu_data.get('hash', '')
+        calculated_hash = verify_hash(payu_data, current_app.config['PAYU_SALT'])
+        
+        if received_hash != calculated_hash:
+            # FIXED: Using correct frontend URL
+            return redirect('https://mandi2mandi.com/confirmation?status=error&message=Invalid+hash')
+        
+        # Update order status
+        order = Order.query.filter_by(utr_code=payu_data.get('txnid')).first()
+        
+        if order:
+            order.status = 'Booked'
+            order.utr_code = payu_data.get('mihpayid', payu_data.get('txnid'))  # Update with PayU transaction ID
+            db.session.commit()
+        
+        # FIXED: Using correct frontend URL    
+        return redirect(f'https://mandi2mandi.com/confirmation?status=success&txnid={payu_data.get("txnid")}')
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')
+
+@payments_bp.route('/payment-failure', methods=['POST'])
+def payment_failure():
+    """Handle failed payment callback from PayU"""
+    payu_data = request.form.to_dict()
+    
+    try:
+        # Update order status
+        order = Order.query.filter_by(utr_code=payu_data.get('txnid')).first()
+        
+        if order:
+            order.status = 'Failed'
+            db.session.commit()
+        
+        # FIXED: Using correct frontend URL    
+        return redirect(f'https://mandi2mandi.com/confirmation?status=failed&txnid={payu_data.get("txnid")}')
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')
+
+@payments_bp.route('/payment-status/<txnid>', methods=['GET'])
+@login_required
+def get_payment_status(txnid):
+    """Get payment status for a transaction"""
+    try:
+        order = Order.query.filter_by(utr_code=txnid, user_id=current_user.id).first()
+
+        if not order:
+            return jsonify({"error": "Order not found"}), 404
+
+        return jsonify({
+            "txnid": txnid,
+            "status": order.status,
+            "amount": float(order.amount_paid),
+            "product": order.product_name
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# SUBSCRIPTION PAYMENT ENDPOINTS
+# ============================================
+
+@payments_bp.route('/get-payu-hash', methods=['POST'])
+@login_required
+def get_payu_hash():
+    """
+    Generate PayU hash or SabPaisa encrypted data for subscription payment
+    This endpoint is called by Next.js frontend to initiate payment
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        required_fields = ['txnid', 'amount', 'productinfo', 'firstname', 'email']
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Get selected gateway (default to PayU for backward compatibility)
+        gateway = data.get('gateway', 'payu').lower()
+
+        if gateway == 'sabpaisa':
+            # SabPaisa payment gateway
+            # Build parameter string with optional UDF fields
+            udf_params = {}
+            for i in range(1, 6):
+                udf_key = f'udf{i}'
+                if udf_key in data:
+                    udf_params[udf_key] = data[udf_key]
+
+            # Sanitize payer name to remove special characters
+            sanitized_name = sanitize_payer_name(data['firstname'])
+
+            # Build parameter string (clientCode must be in BOTH encData AND as separate form field)
+            params_str = build_payment_request(
+                payer_name=sanitized_name,
+                payer_email=data['email'],
+                payer_mobile=data.get('phone', '0000000000'),
+                client_txn_id=data['txnid'],
+                amount=float(data['amount']),
+                client_code=current_app.config['SABPAISA_CLIENT_CODE'],
+                trans_username=current_app.config['SABPAISA_USERNAME'],
+                trans_password=current_app.config['SABPAISA_PASSWORD'],
+                callback_url=data.get('surl', ''),
+                **udf_params
+            )
+
+            # Encrypt the request
+            enc_data = create_encrypted_request(
+                params_str,
+                current_app.config['SABPAISA_AUTH_KEY'],
+                current_app.config['SABPAISA_AUTH_IV']
+            )
+
+            return jsonify({
+                'gateway': 'sabpaisa',
+                'sabpaisa_url': current_app.config['SABPAISA_BASE_URL'],
+                'encData': enc_data,
+                'clientCode': current_app.config['SABPAISA_CLIENT_CODE']
+            }), 200
+        else:
+            # PayU payment gateway (default)
+            # Prepare PayU parameters
+            payu_params = {
+                'key': current_app.config['PAYU_KEY'],
+                'txnid': data['txnid'],
+                'amount': str(data['amount']),
+                'productinfo': data['productinfo'],
+                'firstname': data['firstname'],
+                'email': data['email'],
+            }
+
+            # Include UDF fields if provided (for inquiry payments)
+            for i in range(1, 11):
+                udf_key = f'udf{i}'
+                if udf_key in data:
+                    payu_params[udf_key] = data[udf_key]
+
+            # Generate hash
+            payment_hash = generate_hash(payu_params, current_app.config['PAYU_SALT'])
+
+            return jsonify({
+                'gateway': 'payu',
+                'hash': payment_hash,
+                'merchantKey': current_app.config['PAYU_KEY'],
+                'payuUrl': 'https://secure.payu.in/_payment'  # Production URL
+            }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate hash: {str(e)}"}), 500
+
+
+@payments_bp.route('/subscription-success', methods=['POST'])
+def subscription_payment_success():
+    """
+    Handle successful subscription payment callback from PayU
+    This is called by PayU after successful payment
+    """
+    payu_data = request.form.to_dict()
+
+    try:
+        # Verify hash
+        received_hash = payu_data.get('hash', '')
+        calculated_hash = verify_hash(payu_data, current_app.config['PAYU_SALT'])
+
+        if received_hash != calculated_hash:
+            return redirect('https://mandi2mandi.com/payment/failed?reason=invalid_hash')
+
+        # Payment is verified - redirect to Next.js success handler
+        # The Next.js success route will call the update-subscription endpoint
+        return redirect(
+            f'https://mandi2mandi.com/api/payment/success?'
+            f'txnid={payu_data.get("txnid")}&'
+            f'mihpayid={payu_data.get("mihpayid")}&'
+            f'amount={payu_data.get("amount")}&'
+            f'status=success'
+        )
+
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+@payments_bp.route('/subscription-failure', methods=['POST'])
+def subscription_payment_failure():
+    """
+    Handle failed subscription payment callback from PayU
+    """
+    payu_data = request.form.to_dict()
+
+    try:
+        txnid = payu_data.get('txnid', '')
+        return redirect(f'https://mandi2mandi.com/payment/failed?txnid={txnid}')
+
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+# ============================================
+# INQUIRY PAYMENT ENDPOINTS
+# ============================================
+
+@payments_bp.route('/inquiry-payment-success', methods=['POST'])
+def inquiry_payment_success():
+    """
+    Handle successful inquiry payment callback from PayU
+    Creates an Order from the Inquiry after successful payment
+    """
+    payu_data = request.form.to_dict()
+
+    try:
+        # Verify hash
+        received_hash = payu_data.get('hash', '')
+        calculated_hash = verify_hash(payu_data, current_app.config['PAYU_SALT'])
+
+        if received_hash != calculated_hash:
+            return redirect('https://mandi2mandi.com/payment/failed?reason=invalid_hash')
+
+        # Get inquiry ID from UDF field
+        inquiry_id = payu_data.get('udf1')
+
+        if not inquiry_id:
+            return redirect('https://mandi2mandi.com/payment/failed?reason=no_inquiry_id')
+
+        # Get the inquiry
+        inquiry = Inquiry.query.get(int(inquiry_id))
+
+        if not inquiry:
+            return redirect('https://mandi2mandi.com/payment/failed?reason=inquiry_not_found')
+
+        # Create Order from Inquiry
+        new_order = Order(
+            user_id=inquiry.buyer_id,
+            product_name=inquiry.product_name,
+            quantity=inquiry.quantity,
+            unit=inquiry.unit,
+            total_price=inquiry.estimated_price,
+            amount_paid=float(payu_data.get('amount')),
+            payment_option='Online',
+            utr_code=payu_data.get('mihpayid'),
+            status='Booked',
+            buyer_name=inquiry.buyer_name,
+            buyer_mobile=inquiry.mobile,
+            address_line_1=inquiry.address_line_1,
+            address_line_2=inquiry.address_line_2,
+            city=inquiry.city,
+            state=inquiry.state,
+            pincode=inquiry.pincode
+        )
+
+        db.session.add(new_order)
+        inquiry.status = 'Paid'
+        db.session.commit()
+
+        return redirect(f'https://mandi2mandi.com/confirmation?status=success&order_id={new_order.id}&inquiry_id={inquiry_id}')
+
+    except Exception as e:
+        db.session.rollback()
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+@payments_bp.route('/inquiry-payment-failure', methods=['POST'])
+def inquiry_payment_failure():
+    """
+    Handle failed inquiry payment callback from PayU
+    """
+    payu_data = request.form.to_dict()
+
+    try:
+        inquiry_id = payu_data.get('udf1', '')
+        txnid = payu_data.get('txnid', '')
+        return redirect(f'https://mandi2mandi.com/payment/failed?txnid={txnid}&inquiry_id={inquiry_id}')
+
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+# ============================================
+# SABPAISA SUBSCRIPTION PAYMENT ENDPOINTS
+# ============================================
+
+@payments_bp.route('/sabpaisa-subscription-success', methods=['POST'])
+def sabpaisa_subscription_payment_success():
+    """
+    Handle successful subscription payment callback from SabPaisa
+    """
+    try:
+        # Get encrypted response from SabPaisa
+        enc_data = request.form.get('encData')
+
+        if not enc_data:
+            return redirect('https://mandi2mandi.com/payment/failed?reason=no_encrypted_data')
+
+        # Decrypt and parse the response
+        response_data = parse_callback_response(
+            enc_data,
+            current_app.config['SABPAISA_AUTH_KEY'],
+            current_app.config['SABPAISA_AUTH_IV']
+        )
+
+        # Check if payment was successful (SabPaisa returns status as 'SUCCESS')
+        payment_status = response_data.get('status', '').upper()
+        if payment_status != 'SUCCESS':
+            return redirect(f'https://mandi2mandi.com/payment/failed?reason={response_data.get("statusMessage", "payment_failed")}')
+
+        # Get transaction ID
+        txnid = response_data.get('clientTxnId', '')
+        sabpaisa_txn_id = response_data.get('sabpaisaTxnId', txnid)
+
+        # Payment is verified - redirect to Next.js success handler
+        return redirect(
+            f'https://mandi2mandi.com/api/payment/success?'
+            f'txnid={txnid}&'
+            f'mihpayid={sabpaisa_txn_id}&'
+            f'amount={response_data.get("amount", "199.00")}&'
+            f'status=success'
+        )
+
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+@payments_bp.route('/sabpaisa-subscription-failure', methods=['POST'])
+def sabpaisa_subscription_payment_failure():
+    """
+    Handle failed subscription payment callback from SabPaisa
+    """
+    try:
+        # Get encrypted response from SabPaisa
+        enc_data = request.form.get('encData')
+
+        if enc_data:
+            # Decrypt the response to get details
+            response_data = parse_callback_response(
+                enc_data,
+                current_app.config['SABPAISA_AUTH_KEY'],
+                current_app.config['SABPAISA_AUTH_IV']
+            )
+            txnid = response_data.get('clientTxnId', '')
+        else:
+            txnid = request.form.get('txnId', '')
+
+        return redirect(f'https://mandi2mandi.com/payment/failed?txnid={txnid}')
+
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+# ============================================
+# SABPAISA PAYMENT ENDPOINTS
+# ============================================
+
+@payments_bp.route('/sabpaisa-payment-success', methods=['POST'])
+def sabpaisa_payment_success():
+    """Handle successful payment callback from SabPaisa"""
+    try:
+        # Get encrypted response from SabPaisa
+        enc_data = request.form.get('encData')
+
+        if not enc_data:
+            return redirect('https://mandi2mandi.com/confirmation?status=error&message=No+encrypted+data+received')
+
+        # Decrypt and parse the response
+        response_data = parse_callback_response(
+            enc_data,
+            current_app.config['SABPAISA_AUTH_KEY'],
+            current_app.config['SABPAISA_AUTH_IV']
+        )
+
+        # Check if payment was successful (SabPaisa returns status as 'SUCCESS')
+        payment_status = response_data.get('status', '').upper()
+        if payment_status != 'SUCCESS':
+            return redirect(f'https://mandi2mandi.com/confirmation?status=failed&message={response_data.get("statusMessage", "Payment+failed")}')
+
+        # Get transaction ID
+        txnid = response_data.get('clientTxnId', '')
+
+        # Update order status
+        order = Order.query.filter_by(utr_code=txnid).first()
+
+        if order:
+            order.status = 'Booked'
+            # Use SabPaisa transaction reference as UTR
+            order.utr_code = response_data.get('sabpaisaTxnId', txnid)
+            db.session.commit()
+
+        return redirect(f'https://mandi2mandi.com/confirmation?status=success&txnid={txnid}')
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')
+
+
+@payments_bp.route('/sabpaisa-payment-failure', methods=['POST'])
+def sabpaisa_payment_failure():
+    """Handle failed payment callback from SabPaisa"""
+    try:
+        # Get encrypted response from SabPaisa
+        enc_data = request.form.get('encData')
+
+        if enc_data:
+            # Decrypt the response to get details
+            response_data = parse_callback_response(
+                enc_data,
+                current_app.config['SABPAISA_AUTH_KEY'],
+                current_app.config['SABPAISA_AUTH_IV']
+            )
+            txnid = response_data.get('clientTxnId', '')
+        else:
+            txnid = request.form.get('txnId', '')
+
+        # Update order status
+        order = Order.query.filter_by(utr_code=txnid).first()
+
+        if order:
+            order.status = 'Failed'
+            db.session.commit()
+
+        return redirect(f'https://mandi2mandi.com/confirmation?status=failed&txnid={txnid}')
+    except Exception as e:
+        return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')
+
+
+# ============================================
+# AIRPAY PAYMENT ENDPOINTS
+# ============================================
+
+@payments_bp.route('/airpay-payment-success', methods=['POST'])
+def airpay_payment_success():
+    """Handle successful payment callback from Airpay"""
+    try:
+        # Get form data from Airpay
+        airpay_data = request.form.to_dict()
+
+        print(f"[AIRPAY DEBUG] Callback received: {airpay_data}")
+
+        # Validate the callback response
+        validation_result = validate_airpay_response(
+            airpay_data,
+            current_app.config['AIRPAY_MERCHANT_ID'],
+            current_app.config['AIRPAY_USERNAME']
+        )
+
+        if not validation_result['valid']:
+            error_msg = validation_result.get('error', 'Invalid response')
+            print(f"[AIRPAY ERROR] Validation failed: {error_msg}")
+            return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={error_msg}')
+
+        # Check transaction status (200 = SUCCESS in Airpay)
+        transaction_status = validation_result['status']
+        txnid = validation_result['transaction_id']
+
+        if transaction_status == '200':
+            # Update order status
+            order = Order.query.filter_by(utr_code=txnid).first()
+
+            if order:
+                order.status = 'Booked'
+                order.utr_code = validation_result['ap_transaction_id']  # Update with Airpay transaction ID
+                db.session.commit()
+
+            print(f"[AIRPAY DEBUG] Payment successful for txnid: {txnid}")
+            return redirect(f'https://mandi2mandi.com/confirmation?status=success&txnid={txnid}')
+        else:
+            # Payment failed but callback received
+            order = Order.query.filter_by(utr_code=txnid).first()
+
+            if order:
+                order.status = 'Failed'
+                db.session.commit()
+
+            message = validation_result.get('message', 'Payment failed')
+            print(f"[AIRPAY DEBUG] Payment failed: {message}")
+            return redirect(f'https://mandi2mandi.com/confirmation?status=failed&txnid={txnid}&message={message}')
+
+    except Exception as e:
+        print(f"[AIRPAY ERROR] Exception: {str(e)}")
+        return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')
+
+
+@payments_bp.route('/airpay-payment-failure', methods=['POST'])
+def airpay_payment_failure():
+    """Handle failed payment callback from Airpay"""
+    try:
+        # Get form data from Airpay
+        airpay_data = request.form.to_dict()
+
+        print(f"[AIRPAY DEBUG] Failure callback received: {airpay_data}")
+
+        # Try to get transaction ID
+        txnid = airpay_data.get('TRANSACTIONID', '')
+
+        if txnid:
+            # Update order status
+            order = Order.query.filter_by(utr_code=txnid).first()
+
+            if order:
+                order.status = 'Failed'
+                db.session.commit()
+
+        return redirect(f'https://mandi2mandi.com/confirmation?status=failed&txnid={txnid}')
+
+    except Exception as e:
+        print(f"[AIRPAY ERROR] Failure exception: {str(e)}")
+        return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')

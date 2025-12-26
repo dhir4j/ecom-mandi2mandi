@@ -1,0 +1,453 @@
+
+[
+  {
+    "id": 1,
+    "name": "Rajesh Kumar",
+    "shop_name": "Kumar Traders",
+    "contact_number": "9876543210",
+    "address": "123, Azad Market, Delhi",
+    "commodity": "Onion",
+    "license_number": "LIC3001"
+  },
+  {
+    "id": 2,
+    "name": "Suresh Patel",
+    "shop_name": "Patel & Sons",
+    "contact_number": "9123456789",
+    "address": "45, APMC Market, Ahmedabad",
+    "commodity": "Potato",
+    "license_number": "LIC3002"
+  },
+  {
+    "id": 3,
+    "name": "Meena Singh",
+    "shop_name": "Singh Agri Store",
+    "contact_number": "9988776655",
+    "address": "78, mandi, Jaipur",
+    "commodity": "Wheat",
+    "license_number": "LIC3003"
+  },
+  {
+    "id": 4,
+    "name": "Anil Verma",
+    "shop_name": "Verma Trading Co.",
+    "contact_number": "9321098765",
+    "address": "10, Market Yard, Pune",
+    "commodity": "Tomato",
+    "license_number": "LIC3004"
+  },
+  {
+    "id": 5,
+    "name": "Sunita Gupta",
+    "shop_name": "Gupta Enterprises",
+    "contact_number": "9456781230",
+    "address": "22, Wholesale Market, Lucknow",
+    "commodity": "Rice",
+    "license_number": "LIC3005"
+  },
+  {
+    "id": 6,
+    "name": "Vikram Rathore",
+    "shop_name": "Rathore & Co.",
+    "contact_number": "9765432109",
+    "address": "33, Grain Market, Indore",
+    "commodity": "Soyabean",
+    "license_number": "LIC3006"
+  },
+  {
+    "id": 7,
+    "name": "Priya Sharma",
+    "shop_name": "Sharma Traders",
+    "contact_number": "9654321098",
+    "address": "55, Sabzi Mandi, Bhopal",
+    "commodity": "Garlic",
+    "license_number": "LIC3007"
+  },
+  {
+    "id": 8,
+    "name": "Amit Desai",
+    "shop_name": "Desai Brothers",
+    "contact_number": "9543210987",
+    "address": "67, APMC, Surat",
+    "commodity": "Mango",
+    "license_number": "LIC3008"
+  },
+  {
+    "id": 9,
+    "name": "Kavita Reddy",
+    "shop_name": "Reddy Trading",
+    "contact_number": "9876501234",
+    "address": "89, Rythu Bazaar, Hyderabad",
+    "commodity": "Chilli",
+    "license_number": "LIC3009"
+  },
+  {
+    "id": 10,
+    "name": "Manoj Tiwari",
+    "shop_name": "Tiwari Agro",
+    "contact_number": "9123498765",
+    "address": "11, Anaj Mandi, Patna",
+    "commodity": "Maize",
+    "license_number": "LIC3010"
+  },
+  {
+    "id": 11,
+    "name": "Deepak Jain",
+    "shop_name": "Jain Agro Products",
+    "contact_number": "9354261790",
+    "address": "14, New Market, Kolkata",
+    "commodity": "Jute",
+    "license_number": "LIC3011"
+  },
+  {
+    "id": 12,
+    "name": "Geeta Nair",
+    "shop_name": "Nair Commodities",
+    "contact_number": "9447123456",
+    "address": "25, Market Road, Kochi",
+    "commodity": "Spices",
+    "license_number": "LIC3012"
+  },
+  {
+    "id": 13,
+    "name": "Harish Mehta",
+    "shop_name": "Mehta Trading",
+    "contact_number": "9820123456",
+    "address": "36, Crawford Market, Mumbai",
+    "commodity": "Fruits",
+    "license_number": "LIC3013"
+  },
+  {
+    "id": 14,
+    "name": "Ishaan Sharma",
+    "shop_name": "Sharma & Brothers",
+    "contact_number": "9810234567",
+    "address": "47, Okhla Mandi, Delhi",
+    "commodity": "Vegetables",
+    "license_number": "LIC3014"
+  },
+  {
+    "id": 15,
+    "name": "Jaya Rao",
+    "shop_name": "Rao Enterprises",
+    "contact_number": "9848012345",
+    "address": "58, Begum Bazaar, Hyderabad",
+    "commodity": "Turmeric",
+    "license_number": "LIC3015"
+  },
+  {
+    "id": 16,
+    "name": "Karan Malhotra",
+    "shop_name": "Malhotra Agro",
+    "contact_number": "9811123456",
+    "address": "69, Azadpur Mandi, Delhi",
+    "commodity": "Apple",
+    "license_number": "LIC3016"
+  },
+  {
+    "id": 17,
+    "name": "Lalita Pawar",
+    "shop_name": "Pawar Trading",
+    "contact_number": "9822012345",
+    "address": "80, Market Yard, Nashik",
+    "commodity": "Grapes",
+    "license_number": "LIC3017"
+  },
+  {
+    "id": 18,
+    "name": "Mohan Joshi",
+    "shop_name": "Joshi & Co.",
+    "contact_number": "9823012345",
+    "address": "91, APMC, Vashi",
+    "commodity": "Pomegranate",
+    "license_number": "LIC3018"
+  },
+  {
+    "id": 19,
+    "name": "Nisha Agarwal",
+    "shop_name": "Agarwal Traders",
+    "contact_number": "9830012345",
+    "address": "102, Burrabazar, Kolkata",
+    "commodity": "Mustard",
+    "license_number": "LIC3019"
+  },
+  {
+    "id": 20,
+    "name": "Omar Abdullah",
+    "shop_name": "Kashmir Dry Fruits",
+    "contact_number": "9906012345",
+    "address": "113, Lal Chowk, Srinagar",
+    "commodity": "Saffron",
+    "license_number": "LIC3020"
+  },
+  {
+    "id": 21,
+    "name": "Prakash Singh",
+    "shop_name": "Singh Trading Company",
+    "contact_number": "9415012345",
+    "address": "124, Aminabad, Lucknow",
+    "commodity": "Sugarcane",
+    "license_number": "LIC3021"
+  },
+  {
+    "id": 22,
+    "name": "Ravi Shankar",
+    "shop_name": "Shankar Agro",
+    "contact_number": "9845012345",
+    "address": "135, KR Market, Bengaluru",
+    "commodity": "Coffee",
+    "license_number": "LIC3022"
+  },
+  {
+    "id": 23,
+    "name": "Sarita Devi",
+    "shop_name": "Devi & Sons",
+    "contact_number": "9431012345",
+    "address": "146, Marufganj, Patna",
+    "commodity": "Lentils",
+    "license_number": "LIC3023"
+  },
+  {
+    "id": 24,
+    "name": "Tarun Gupta",
+    "shop_name": "Gupta Trading House",
+    "contact_number": "9810345678",
+    "address": "157, Khari Baoli, Delhi",
+    "commodity": "Spices",
+    "license_number": "LIC3024"
+  },
+  {
+    "id": 25,
+    "name": "Usha Khanna",
+    "shop_name": "Khanna Store",
+    "contact_number": "9811234567",
+    "address": "168, Karol Bagh, Delhi",
+    "commodity": "Pulses",
+    "license_number": "LIC3025"
+  },
+  {
+    "id": 26,
+    "name": "Vijay Kumar",
+    "shop_name": "Vijay Traders",
+    "contact_number": "9844012345",
+    "address": "179, Yeshwanthpur, Bengaluru",
+    "commodity": "Ragi",
+    "license_number": "LIC3026"
+  },
+  {
+    "id": 27,
+    "name": "Yash Chopra",
+    "shop_name": "Chopra & Sons",
+    "contact_number": "9820234567",
+    "address": "190, Dadar Market, Mumbai",
+    "commodity": "Flowers",
+    "license_number": "LIC3027"
+  },
+  {
+    "id": 28,
+    "name": "Zoya Akhtar",
+    "shop_name": "Zoya's Organics",
+    "contact_number": "9820345678",
+    "address": "201, Pali Hill, Mumbai",
+    "commodity": "Organic Veggies",
+    "license_number": "LIC3028"
+  },
+  {
+    "id": 29,
+    "name": "Arun Kumar",
+    "shop_name": "Arun Agri Business",
+    "contact_number": "9840012345",
+    "address": "212, Koyambedu, Chennai",
+    "commodity": "Banana",
+    "license_number": "LIC3029"
+  },
+  {
+    "id": 30,
+    "name": "Bhavna Shah",
+    "shop_name": "Shah Trading",
+    "contact_number": "9825012345",
+    "address": "223, Manek Chowk, Ahmedabad",
+    "commodity": "Cotton",
+    "license_number": "LIC3030"
+  },
+  {
+    "id": 31,
+    "name": "Chirag Sharma",
+    "shop_name": "Sharma Agri Exports",
+    "contact_number": "9920012345",
+    "address": "234, APMC, Vashi, Navi Mumbai",
+    "commodity": "Basmati Rice",
+    "license_number": "LIC3031"
+  },
+  {
+    "id": 32,
+    "name": "Divya Singh",
+    "shop_name": "Singh & Co. Grains",
+    "contact_number": "9717012345",
+    "address": "245, Narela Mandi, Delhi",
+    "commodity": "Wheat",
+    "license_number": "LIC3032"
+  },
+  {
+    "id": 33,
+    "name": "Esha Roy",
+    "shop_name": "Roy's Fresh Produce",
+    "contact_number": "9831012345",
+    "address": "256, Mechua Bazar, Kolkata",
+    "commodity": "Fish",
+    "license_number": "LIC3033"
+  },
+  {
+    "id": 34,
+    "name": "Farhan Khan",
+    "shop_name": "Khan's Farm Direct",
+    "contact_number": "9892012345",
+    "address": "267, Byculla Market, Mumbai",
+    "commodity": "Goat",
+    "license_number": "LIC3034"
+  },
+  {
+    "id": 35,
+    "name": "Gaurav Mishra",
+    "shop_name": "Mishra Agro Traders",
+    "contact_number": "9555012345",
+    "address": "278, Ghazipur Mandi, Delhi",
+    "commodity": "Chicken",
+    "license_number": "LIC3035"
+  },
+  {
+    "id": 36,
+    "name": "Heena Patel",
+    "shop_name": "Patel's Organic Farm",
+    "contact_number": "9824012345",
+    "address": "289, Jamalpur, Ahmedabad",
+    "commodity": "Groundnut",
+    "license_number": "LIC3036"
+  },
+  {
+    "id": 37,
+    "name": "Imran Sheikh",
+    "shop_name": "Sheikh's Dry Fruits",
+    "contact_number": "9821012345",
+    "address": "300, Masjid Bunder, Mumbai",
+    "commodity": "Dates",
+    "license_number": "LIC3037"
+  },
+  {
+    "id": 38,
+    "name": "Jatin Verma",
+    "shop_name": "Verma's Pulses",
+    "contact_number": "9212012345",
+    "address": "311, Lawrence Road, Delhi",
+    "commodity": "Gram",
+    "license_number": "LIC3038"
+  },
+  {
+    "id": 39,
+    "name": "Kiran Bedi",
+    "shop_name": "Bedi's Farm Fresh",
+    "contact_number": "9818012345",
+    "address": "322, INA Market, Delhi",
+    "commodity": "Exotic Vegetables",
+    "license_number": "LIC3039"
+  },
+  {
+    "id": 40,
+    "name": "Lalit Modi",
+    "shop_name": "Modi Enterprises",
+    "contact_number": "9819012345",
+    "address": "333, Zaveri Bazaar, Mumbai",
+    "commodity": "Gold",
+    "license_number": "LIC3040"
+  },
+  {
+    "id": 41,
+    "name": "Mahesh Bhatt",
+    "shop_name": "Bhatt's Produce",
+    "contact_number": "9820023456",
+    "address": "344, Bandra Market, Mumbai",
+    "commodity": "Broccoli",
+    "license_number": "LIC3041"
+  },
+  {
+    "id": 42,
+    "name": "Neeta Ambani",
+    "shop_name": "Ambani Organics",
+    "contact_number": "9820000001",
+    "address": "355, Altamount Road, Mumbai",
+    "commodity": "Avocado",
+    "license_number": "LIC3042"
+  },
+  {
+    "id": 43,
+    "name": "Pooja Shetty",
+    "shop_name": "Shetty's Farm",
+    "contact_number": "9820456789",
+    "address": "366, Juhu, Mumbai",
+    "commodity": "Coconut",
+    "license_number": "LIC3043"
+  },
+  {
+    "id": 44,
+    "name": "Rohan Mehra",
+    "shop_name": "Mehra's Spices",
+    "contact_number": "9810567890",
+    "address": "377, Chandni Chowk, Delhi",
+    "commodity": "Cardamom",
+    "license_number": "LIC3044"
+  },
+  {
+    "id": 45,
+    "name": "Sameer Soni",
+    "shop_name": "Soni Trading",
+    "contact_number": "9820567890",
+    "address": "388, Linking Road, Mumbai",
+    "commodity": "Cashew",
+    "license_number": "LIC3045"
+  },
+  {
+    "id": 46,
+    "name": "Tina Dutta",
+    "shop_name": "Dutta's Produce",
+    "contact_number": "9830567890",
+    "address": "399, Gariahat, Kolkata",
+    "commodity": "Hilsa Fish",
+    "license_number": "LIC3046"
+  },
+  {
+    "id": 47,
+    "name": "Vikas Khanna",
+    "shop_name": "Khanna's Kitchen",
+    "contact_number": "9818567890",
+    "address": "410, Khan Market, Delhi",
+    "commodity": "Herbs",
+    "license_number": "LIC3047"
+  },
+  {
+    "id": 48,
+    "name": "Anand Mahindra",
+    "shop_name": "Mahindra Agri",
+    "contact_number": "9821567890",
+    "address": "421, Worli, Mumbai",
+    "commodity": "Tractor Parts",
+    "license_number": "LIC3048"
+  },
+  {
+    "id": 49,
+    "name": "Brijesh Patel",
+    "shop_name": "Patel's Supply",
+    "contact_number": "9825567890",
+    "address": "432, Relief Road, Ahmedabad",
+    "commodity": "Fertilizers",
+    "license_number": "LIC3049"
+  },
+  {
+    "id": 50,
+    "name": "Asha Iyer",
+    "shop_name": "Mandi Corner 50",
+    "contact_number": "9354261790",
+    "address": "65, Main Bazaar, Mumbai",
+    "commodity": "Guava",
+    "license_number": "LIC3050"
+  }
+]
