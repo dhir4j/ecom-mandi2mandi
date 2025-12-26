@@ -17,6 +17,44 @@ from .airpay_utils import (
 
 payments_bp = Blueprint('payments', __name__)
 
+def split_name_for_airpay(full_name):
+    """
+    Split full name into first and last name for Airpay
+    Handles edge cases:
+    - Empty name
+    - Single word name
+    - Special characters (sanitizes for Airpay)
+
+    Returns:
+        tuple: (first_name, last_name) both sanitized for Airpay
+    """
+    import re
+
+    if not full_name or not full_name.strip():
+        return ("User", "User")
+
+    # Remove special characters (Airpay requires alphanumeric + spaces only)
+    sanitized = re.sub(r'[^A-Za-z0-9\s]', '', full_name.strip())
+
+    # Remove extra spaces
+    sanitized = ' '.join(sanitized.split())
+
+    if not sanitized:
+        return ("User", "User")
+
+    # Split name
+    parts = sanitized.split(' ', 1)
+    first_name = parts[0]
+    last_name = parts[1] if len(parts) > 1 else parts[0]
+
+    # Ensure both are at least 1 character (Airpay requirement)
+    if not first_name:
+        first_name = "User"
+    if not last_name:
+        last_name = first_name
+
+    return (first_name, last_name)
+
 @payments_bp.route('/test-airpay-checksum', methods=['GET'])
 def test_airpay_checksum():
     """
@@ -252,10 +290,8 @@ def initiate_payment():
             })
         elif gateway == 'airpay':
             # Airpay payment gateway
-            # Split buyer name into first and last name
-            name_parts = current_user.name.split(' ', 1)
-            buyer_first_name = name_parts[0]
-            buyer_last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
+            # Split buyer name into first and last name (sanitized for Airpay)
+            buyer_first_name, buyer_last_name = split_name_for_airpay(current_user.name)
 
             # Build Airpay payment request
             airpay_params = build_airpay_request(
@@ -455,10 +491,8 @@ def get_payu_hash():
             print(f"  SECRET_KEY: {'SET' if current_app.config.get('AIRPAY_SECRET_KEY') else 'NOT SET'}")
             print(f"  BASE_URL: {current_app.config.get('AIRPAY_BASE_URL', 'NOT SET')}")
 
-            # Split buyer name into first and last name
-            name_parts = data['firstname'].split(' ', 1)
-            buyer_first_name = name_parts[0]
-            buyer_last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
+            # Split buyer name into first and last name (sanitized for Airpay)
+            buyer_first_name, buyer_last_name = split_name_for_airpay(data['firstname'])
 
             print(f"[PAYMENT HASH DEBUG] Name split: '{data['firstname']}' -> first='{buyer_first_name}', last='{buyer_last_name}'")
 
