@@ -16,7 +16,7 @@ type SubscriptionPaywallProps = {
 export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: SubscriptionPaywallProps) {
   const { user } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedGateway, setSelectedGateway] = useState<'payu' | 'sabpaisa'>('payu');
+  const [selectedGateway, setSelectedGateway] = useState<'payu' | 'sabpaisa' | 'airpay'>('payu');
 
   const handleSubscribe = async () => {
     console.log('Subscribe button clicked');
@@ -49,6 +49,9 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
       if (selectedGateway === 'sabpaisa') {
         paymentParams.surl = 'https://www.mandi.ramhotravels.com/api/sabpaisa-subscription-success';
         paymentParams.furl = 'https://www.mandi.ramhotravels.com/api/sabpaisa-subscription-failure';
+      } else if (selectedGateway === 'airpay') {
+        paymentParams.surl = 'https://www.mandi.ramhotravels.com/api/airpay-subscription-success';
+        paymentParams.furl = 'https://www.mandi.ramhotravels.com/api/airpay-subscription-failure';
       } else {
         paymentParams.surl = 'https://www.mandi.ramhotravels.com/api/subscription-success';
         paymentParams.furl = 'https://www.mandi.ramhotravels.com/api/subscription-failure';
@@ -104,6 +107,26 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
           input.name = key;
           input.value = String(value);
           form.appendChild(input);
+        });
+      } else if (data.gateway === 'airpay') {
+        // Airpay payment flow
+        const { airpay_url, ...airpayParams } = data;
+
+        if (!airpay_url) {
+          throw new Error('Missing required Airpay URL from backend');
+        }
+
+        form.action = airpay_url;
+
+        // Add Airpay parameters as hidden inputs (exclude gateway and airpay_url)
+        Object.entries(airpayParams).forEach(([key, value]) => {
+          if (key !== 'gateway' && value !== undefined && value !== null) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = String(value);
+            form.appendChild(input);
+          }
         });
       } else {
         // PayU payment flow
@@ -202,20 +225,20 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
           {/* Payment Gateway Selection */}
           <div className="space-y-3 pt-2">
             <p className="text-sm font-semibold">Choose Payment Gateway:</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setSelectedGateway('payu')}
                 disabled={isProcessing}
-                className={`p-3 border-2 rounded-lg transition-all ${
+                className={`p-2.5 border-2 rounded-lg transition-all ${
                   selectedGateway === 'payu'
                     ? 'border-primary bg-primary/10'
                     : 'border-border hover:border-primary/50'
                 }`}
               >
                 <div className="flex flex-col items-center gap-1">
-                  <div className="text-base font-semibold">PayU</div>
-                  <div className="text-xs text-muted-foreground">Trusted Gateway</div>
+                  <div className="text-sm font-semibold">PayU</div>
+                  <div className="text-[10px] text-muted-foreground">Trusted</div>
                 </div>
               </button>
 
@@ -223,15 +246,31 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
                 type="button"
                 onClick={() => setSelectedGateway('sabpaisa')}
                 disabled={isProcessing}
-                className={`p-3 border-2 rounded-lg transition-all ${
+                className={`p-2.5 border-2 rounded-lg transition-all ${
                   selectedGateway === 'sabpaisa'
                     ? 'border-primary bg-primary/10'
                     : 'border-border hover:border-primary/50'
                 }`}
               >
                 <div className="flex flex-col items-center gap-1">
-                  <div className="text-base font-semibold">SabPaisa</div>
-                  <div className="text-xs text-muted-foreground">Secure Solution</div>
+                  <div className="text-sm font-semibold">SabPaisa</div>
+                  <div className="text-[10px] text-muted-foreground">Secure</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedGateway('airpay')}
+                disabled={isProcessing}
+                className={`p-2.5 border-2 rounded-lg transition-all ${
+                  selectedGateway === 'airpay'
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-primary/50'
+                }`}
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <div className="text-sm font-semibold">Airpay</div>
+                  <div className="text-[10px] text-muted-foreground">Fast</div>
                 </div>
               </button>
             </div>
@@ -266,7 +305,7 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
 
           {/* Trust Badge */}
           <p className="text-center text-xs text-muted-foreground">
-            🔒 Secure payment powered by {selectedGateway === 'payu' ? 'PayU' : 'SabPaisa'}
+            🔒 Secure payment powered by {selectedGateway === 'payu' ? 'PayU' : selectedGateway === 'sabpaisa' ? 'SabPaisa' : 'Airpay'}
           </p>
         </div>
       </DialogContent>

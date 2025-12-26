@@ -293,7 +293,7 @@ def get_payment_status(txnid):
 @login_required
 def get_payu_hash():
     """
-    Generate PayU hash or SabPaisa encrypted data for subscription payment
+    Generate PayU hash, SabPaisa encrypted data, or Airpay params for subscription payment
     This endpoint is called by Next.js frontend to initiate payment
     """
     try:
@@ -348,6 +348,38 @@ def get_payu_hash():
                 'encData': enc_data,
                 'clientCode': current_app.config['SABPAISA_CLIENT_CODE']
             }), 200
+        elif gateway == 'airpay':
+            # Airpay payment gateway
+            # Split buyer name into first and last name
+            name_parts = data['firstname'].split(' ', 1)
+            buyer_first_name = name_parts[0]
+            buyer_last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
+
+            # Build Airpay payment request for subscription
+            airpay_params = build_airpay_request(
+                buyer_email=data['email'],
+                buyer_first_name=buyer_first_name,
+                buyer_last_name=buyer_last_name,
+                buyer_phone=data.get('phone', '0000000000'),
+                buyer_address='Subscription',
+                buyer_city='',
+                buyer_state='',
+                buyer_country='India',
+                buyer_pincode='000000',
+                amount=f"{float(data['amount']):.2f}",
+                order_id=data['txnid'],
+                currency='356',  # INR currency code
+                iso_currency='INR',
+                merchant_id=current_app.config['AIRPAY_MERCHANT_ID'],
+                username=current_app.config['AIRPAY_USERNAME'],
+                password=current_app.config['AIRPAY_PASSWORD'],
+                secret_key=current_app.config['AIRPAY_SECRET_KEY'],
+            )
+
+            airpay_params['gateway'] = 'airpay'
+            airpay_params['airpay_url'] = current_app.config['AIRPAY_BASE_URL']
+
+            return jsonify(airpay_params), 200
         else:
             # PayU payment gateway (default)
             # Prepare PayU parameters
@@ -730,3 +762,73 @@ def airpay_payment_failure():
     except Exception as e:
         print(f"[AIRPAY ERROR] Failure exception: {str(e)}")
         return redirect(f'https://mandi2mandi.com/confirmation?status=error&message={str(e)}')
+
+
+# ============================================
+# AIRPAY SUBSCRIPTION PAYMENT ENDPOINTS
+# ============================================
+
+@payments_bp.route('/airpay-subscription-success', methods=['POST'])
+def airpay_subscription_payment_success():
+    """Handle successful subscription payment callback from Airpay"""
+    try:
+        # Get form data from Airpay
+        airpay_data = request.form.to_dict()
+
+        print(f"[AIRPAY SUBSCRIPTION DEBUG] Callback received: {airpay_data}")
+
+        # Validate the callback response
+        validation_result = validate_airpay_response(
+            airpay_data,
+            current_app.config['AIRPAY_MERCHANT_ID'],
+            current_app.config['AIRPAY_USERNAME']
+        )
+
+        if not validation_result['valid']:
+            error_msg = validation_result.get('error', 'Invalid response')
+            print(f"[AIRPAY SUBSCRIPTION ERROR] Validation failed: {error_msg}")
+            return redirect(f'https://mandi2mandi.com/payment/failed?reason={error_msg}')
+
+        # Check transaction status (200 = SUCCESS in Airpay)
+        transaction_status = validation_result['status']
+        txnid = validation_result['transaction_id']
+        ap_txn_id = validation_result['ap_transaction_id']
+
+        if transaction_status == '200':
+            print(f"[AIRPAY SUBSCRIPTION DEBUG] Payment successful for txnid: {txnid}")
+            # Payment is verified - redirect to Next.js success handler
+            return redirect(
+                f'https://mandi2mandi.com/api/payment/success?'
+                f'txnid={txnid}&'
+                f'mihpayid={ap_txn_id}&'
+                f'amount={validation_result.get("amount", "199.00")}&'
+                f'status=success'
+            )
+        else:
+            # Payment failed but callback received
+            message = validation_result.get('message', 'Payment failed')
+            print(f"[AIRPAY SUBSCRIPTION DEBUG] Payment failed: {message}")
+            return redirect(f'https://mandi2mandi.com/payment/failed?txnid={txnid}&message={message}')
+
+    except Exception as e:
+        print(f"[AIRPAY SUBSCRIPTION ERROR] Exception: {str(e)}")
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+@payments_bp.route('/airpay-subscription-failure', methods=['POST'])
+def airpay_subscription_payment_failure():
+    """Handle failed subscription payment callback from Airpay"""
+    try:
+        # Get form data from Airpay
+        airpay_data = request.form.to_dict()
+
+        print(f"[AIRPAY SUBSCRIPTION DEBUG] Failure callback received: {airpay_data}")
+
+        # Try to get transaction ID
+        txnid = airpay_data.get('TRANSACTIONID', '')
+
+        return redirect(f'https://mandi2mandi.com/payment/failed?txnid={txnid}')
+
+    except Exception as e:
+        print(f"[AIRPAY SUBSCRIPTION ERROR] Failure exception: {str(e)}")
+        return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
