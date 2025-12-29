@@ -1,64 +1,116 @@
 """
 Airpay Payment Gateway Integration Utilities
-Based on Airpay Python SDK v3.0.0
-Uses SHA256 encryption and CRC32 checksum verification
+Based on Airpay Python SDK v4.0.0
+Uses AES encryption, OAuth2 authentication, and checksum verification
 """
 import hashlib
 import zlib
+import json
+import base64
+import requests
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 
 
-class AirpayChecksum:
+class AirpayV4Functions:
     """
-    Airpay checksum and encryption utilities
-    Based on official Airpay Python SDK
+    Airpay V4 API encryption and checksum utilities
+    Based on official Airpay Python SDK v4
     """
 
     @staticmethod
-    def encrypt(data: str, salt: str) -> str:
+    def encrypt_string(my_string: str, username: str, password: str) -> str:
         """
-        Encrypt data using SHA256 (Airpay privatekey generation)
+        Encrypt data using AES-CBC encryption for Airpay V4 API
+
+        Args:
+            my_string: JSON string to encrypt
+            username: Airpay username
+            password: Airpay password
+
+        Returns:
+            IV + base64 encoded encrypted data
+        """
+        # Generate secret key from username and password
+        secret_key = hashlib.md5(f"{username}~:~{password}".encode()).hexdigest()
+
+        # Fixed IV for Airpay (as per their SDK)
+        iv = 'c0f9e2d16031b0ce'
+
+        # Pad the request data and encrypt using AES-CBC
+        cipher = AES.new(secret_key.encode(), AES.MODE_CBC, iv.encode())
+        encrypted_data = cipher.encrypt(pad(my_string.encode(), AES.block_size))
+
+        # Combine IV and encrypted data, then base64 encode
+        data = iv + base64.b64encode(encrypted_data).decode()
+
+        return data
+
+    @staticmethod
+    def decrypt_string(encrypted_data: str, username: str, password: str) -> str:
+        """
+        Decrypt response from Airpay V4 API
+
+        Args:
+            encrypted_data: Encrypted response from Airpay (IV + encrypted data)
+            username: Airpay username
+            password: Airpay password
+
+        Returns:
+            Decrypted JSON string
+        """
+        # Generate secret key from username and password
+        secret_key = hashlib.md5(f"{username}~:~{password}".encode()).hexdigest()
+
+        # Extract IV (first 16 chars) and encrypted data
+        iv = encrypted_data[:16]
+        encrypted_data = encrypted_data[16:]
+
+        # Decrypt the data using AES-CBC
+        cipher = AES.new(secret_key.encode(), AES.MODE_CBC, iv.encode())
+        decrypted_data = cipher.decrypt(base64.b64decode(encrypted_data))
+
+        # Remove padding from the decrypted data
+        unpadded_data = unpad(decrypted_data, AES.block_size)
+
+        return unpadded_data.decode()
+
+    @staticmethod
+    def checksum_cal(post_data: Dict[str, Any]) -> str:
+        """
+        Calculate checksum for Airpay V4 API request
+
+        Args:
+            post_data: Dictionary of parameters (will be sorted alphabetically)
+
+        Returns:
+            SHA256 checksum
+        """
+        # Sort data alphabetically by key
+        sorted_data = sorted(post_data.items(), key=lambda x: x[0])
+        # Concatenate all values
+        data = ''.join([str(value) for _, value in sorted_data])
+        # Add today's date
+        data_with_date = data + datetime.now().strftime("%Y-%m-%d")
+        # Calculate SHA256 hash
+        return hashlib.sha256(data_with_date.encode()).hexdigest()
+
+    @staticmethod
+    def encrypt_sha(data: str, salt: str) -> str:
+        """
+        Encrypt data using SHA256 (for privatekey generation)
 
         Args:
             data: Data to encrypt (username:|:password)
             salt: Secret key
 
         Returns:
-            SHA256 hash string
+            SHA256 hash
         """
         key = salt + '@' + data
-        encrypted = hashlib.sha256(key.encode('utf-8')).hexdigest()
-        return encrypted
-
-    @staticmethod
-    def encrypt_sha256(data: str) -> str:
-        """
-        Create SHA256 hash of data
-
-        Args:
-            data: Data to hash (username~:~password)
-
-        Returns:
-            SHA256 hash string
-        """
-        return hashlib.sha256(data.encode('utf-8')).hexdigest()
-
-    @staticmethod
-    def calculate_checksum_sha256(data: str, salt: str) -> str:
-        """
-        Calculate SHA256 checksum for payment data
-
-        Args:
-            data: Payment data string (concatenated fields + date)
-            salt: SHA256 hashed key
-
-        Returns:
-            SHA256 checksum
-        """
-        key = salt + '@' + data
-        checksum = hashlib.sha256(key.encode('utf-8')).hexdigest()
-        return checksum
+        return hashlib.sha256(key.encode()).hexdigest()
 
     @staticmethod
     def verify_response_checksum(response_data: Dict[str, str], merchant_id: str,
@@ -74,20 +126,20 @@ class AirpayChecksum:
         Returns:
             Tuple of (is_valid, merchant_secure_hash)
         """
-        transaction_id = str(response_data.get('TRANSACTIONID', ''))
-        ap_transaction_id = str(response_data.get('APTRANSACTIONID', ''))
-        amount = str(response_data.get('AMOUNT', ''))
-        transaction_status = str(response_data.get('TRANSACTIONSTATUS', ''))
-        message = str(response_data.get('MESSAGE', ''))
-        ap_secure_hash = str(response_data.get('ap_SecureHash', ''))
-        chmod = str(response_data.get('CHMOD', ''))
-        customer_vpa = str(response_data.get('CUSTOMERVPA', ''))
+        transaction_id = str(response_data.get('orderid', response_data.get('TRANSACTIONID', ''))).strip()
+        ap_transaction_id = str(response_data.get('ap_transactionid', response_data.get('APTRANSACTIONID', ''))).strip()
+        amount = str(response_data.get('amount', response_data.get('AMOUNT', ''))).strip()
+        transaction_status = str(response_data.get('transaction_status', response_data.get('TRANSACTIONSTATUS', ''))).strip()
+        message = str(response_data.get('message', response_data.get('MESSAGE', ''))).strip()
+        ap_secure_hash = str(response_data.get('ap_securehash', response_data.get('ap_SecureHash', ''))).strip()
+        chmod = str(response_data.get('chmod', response_data.get('CHMOD', ''))).strip()
+        customer_vpa = str(response_data.get('CUSTOMERVPA', '')).strip()
 
         # Build CRC data string
         crc_data = f"{transaction_id}:{ap_transaction_id}:{amount}:{transaction_status}:{message}:{merchant_id}:{username}"
 
         # Add UPI VPA if payment method is UPI
-        if chmod == 'upi':
+        if chmod.lower() == 'upi' and customer_vpa:
             crc_data += f":{customer_vpa}"
 
         # Calculate CRC32 checksum
@@ -100,22 +152,72 @@ class AirpayChecksum:
         return is_valid, merchant_secure_hash
 
 
-def sanitize_airpay_name(name: str) -> str:
+def get_oauth2_token(merchant_id: str, username: str, password: str,
+                     client_id: str, client_secret: str) -> Optional[str]:
     """
-    Sanitize name field for Airpay - must be alphanumeric with spaces only
-    Regex: ^[A-Za-z\d\s]+$
+    Get OAuth2 access token from Airpay V4 API
+
+    Args:
+        merchant_id: Airpay merchant ID
+        username: Airpay username
+        password: Airpay password
+        client_id: OAuth2 client ID
+        client_secret: OAuth2 client secret
+
+    Returns:
+        Access token string or None if error
     """
-    import re
-    if not name:
-        return "User"
+    token_url = 'https://kraken.airpay.co.in/airpay/pay/v4/api/oauth2/'
 
-    # Remove special characters, keep only letters, numbers, and spaces
-    sanitized = re.sub(r'[^A-Za-z0-9\s]', '', name)
+    # Prepare OAuth2 request
+    request = {
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'grant_type': 'client_credentials',
+        'merchant_id': merchant_id
+    }
 
-    # Remove extra spaces
-    sanitized = ' '.join(sanitized.split())
+    request_string = json.dumps(request)
 
-    return sanitized if sanitized else "User"
+    # Encrypt request
+    functions = AirpayV4Functions()
+    encdata = functions.encrypt_string(request_string, username, password)
+
+    # Calculate checksum
+    checksum = functions.checksum_cal(request)
+
+    # Prepare form data
+    req = {
+        'merchant_id': merchant_id,
+        'encdata': encdata,
+        'checksum': checksum
+    }
+
+    try:
+        # Send POST request
+        response = requests.post(token_url, data=req, timeout=30)
+        response_json = response.json()
+
+        # Decrypt response
+        decrypt_data = functions.decrypt_string(response_json['response'], username, password)
+        token_response = json.loads(decrypt_data)
+
+        # Check for errors
+        if 'success' in token_response and not token_response['success']:
+            print(f"[AIRPAY ERROR] Token request failed: {token_response.get('msg', 'Unknown error')}")
+            return None
+
+        # Extract access token
+        access_token = token_response.get('data', {}).get('access_token')
+        if not access_token:
+            print("[AIRPAY ERROR] No access token in response")
+            return None
+
+        return access_token
+
+    except Exception as e:
+        print(f"[AIRPAY ERROR] Exception getting OAuth2 token: {str(e)}")
+        return None
 
 
 def build_payment_request(
@@ -136,119 +238,92 @@ def build_payment_request(
     username: str = "",
     password: str = "",
     secret_key: str = "",
+    client_id: str = "",
+    client_secret: str = "",
 ) -> Dict[str, str]:
     """
-    Build Airpay payment request parameters
+    Build Airpay V4 payment request parameters with OAuth2 token
 
     Args:
-        All buyer and payment details
+        All buyer and payment details plus OAuth2 credentials
 
     Returns:
-        Dictionary of payment parameters to send to Airpay
+        Dictionary of payment parameters to send to Airpay V4
     """
     import re
 
-    today = datetime.now().strftime("%Y-%m-%d")
-
     # Sanitize names to meet Airpay requirements (alphanumeric + spaces only)
-    buyer_first_name = sanitize_airpay_name(buyer_first_name)
-    buyer_last_name = sanitize_airpay_name(buyer_last_name)
+    def sanitize_name(name):
+        if not name:
+            return "User"
+        sanitized = re.sub(r'[^A-Za-z0-9\s]', '', name)
+        sanitized = ' '.join(sanitized.split())
+        return sanitized if sanitized else "User"
 
-    # Ensure buyer_email is not empty (set to empty string if None)
+    buyer_first_name = sanitize_name(buyer_first_name)
+    buyer_last_name = sanitize_name(buyer_last_name)
+
+    # Ensure required fields are not empty
     if not buyer_email:
         buyer_email = ''
-
-    # Ensure buyer_phone is not empty (use dummy if empty as per API)
     if not buyer_phone:
         buyer_phone = '0000000000'
 
-    # Build data string for checksum (order matters!)
-    # Based on sendtoairpay.py lines 146-149
-    # For SIMPLE TRANSACTION (not subscription), UID is NOT included in checksum
-    # Format: buyerEmail + buyerFirstName + buyerLastName + [buyerAddress + buyerCity + buyerState + buyerCountry] + amount + orderid
+    # Step 1: Get OAuth2 access token
+    print(f"[AIRPAY V4 DEBUG] Getting OAuth2 token...")
+    access_token = get_oauth2_token(merchant_id, username, password, client_id, client_secret)
 
-    print(f"[AIRPAY DEBUG] Checksum calculation inputs:")
-    print(f"  buyerEmail: '{buyer_email}'")
-    print(f"  buyerFirstName: '{buyer_first_name}'")
-    print(f"  buyerLastName: '{buyer_last_name}'")
-    print(f"  buyerAddress: '{buyer_address}'")
-    print(f"  buyerCity: '{buyer_city}'")
-    print(f"  buyerState: '{buyer_state}'")
-    print(f"  buyerCountry: '{buyer_country}'")
-    print(f"  amount: '{amount}'")
-    print(f"  orderid: '{order_id}'")
-    print(f"  today: '{today}'")
+    if not access_token:
+        raise Exception("Failed to get OAuth2 access token from Airpay")
 
-    if buyer_address and buyer_city and buyer_state and buyer_country:
-        # With address - as per reference implementation
-        all_data = (
-            buyer_email + buyer_first_name + buyer_last_name +
-            buyer_address + buyer_city + buyer_state + buyer_country +
-            amount + order_id
-        )
-        print(f"[AIRPAY DEBUG] Using WITH ADDRESS checksum format")
-    else:
-        # Without address - as per reference implementation
-        all_data = (
-            buyer_email + buyer_first_name + buyer_last_name +
-            amount + order_id
-        )
-        print(f"[AIRPAY DEBUG] Using WITHOUT ADDRESS checksum format")
+    print(f"[AIRPAY V4 DEBUG] Got access token: {access_token[:20]}...")
 
-    print(f"[AIRPAY DEBUG] alldata: '{all_data}'")
+    # Step 2: Prepare payment data
+    mer_dom = base64.b64encode(b'http://track.airpay.co.in').decode('utf-8')
 
-    # Generate privatekey using encryption
-    # Format: hash('sha256', secret.'@'.username.':|:'.password)
-    checksum_obj = AirpayChecksum()
-    privatekey = checksum_obj.encrypt(
-        f"{username}:|:{password}",
-        secret_key
-    )
-    print(f"[AIRPAY DEBUG] privatekey: {privatekey}")
-
-    # Generate SHA256 key for checksum
-    # Format: hash('SHA256', username.'~:~'.password)
-    key_sha256 = checksum_obj.encrypt_sha256(f"{username}~:~{password}")
-    print(f"[AIRPAY DEBUG] key_sha256: {key_sha256}")
-
-    # Calculate checksum
-    # Format: hash('SHA256', key.'@'.alldata.date)
-    checksum_data = all_data + today
-    print(f"[AIRPAY DEBUG] checksum_data (alldata+today): '{checksum_data}'")
-
-    checksum = checksum_obj.calculate_checksum_sha256(checksum_data, key_sha256)
-    print(f"[AIRPAY DEBUG] Final checksum: {checksum}")
-
-    # Generate UID (unique user identifier) - AFTER checksum calculation
-    # UID is sent as parameter but NOT included in simple transaction checksum
-    uid = hashlib.sha256(f"{username}{order_id}{today}".encode('utf-8')).hexdigest()
-
-    # Build request parameters (matching exact Airpay API documentation)
-    # Field order matters for form submission
-    payment_params = {
-        'buyerEmail': buyer_email,
-        'buyerPhone': buyer_phone,
-        'buyerFirstName': buyer_first_name,
-        'buyerLastName': buyer_last_name,
-        'buyerAddress': buyer_address if buyer_address else '',
-        'buyerCity': buyer_city if buyer_city else '',
-        'buyerState': buyer_state if buyer_state else '',
-        'buyerCountry': buyer_country if buyer_country else '',
-        'buyerPinCode': buyer_pincode if buyer_pincode else '',
-        'orderid': order_id,
+    post_data = {
+        'buyer_email': buyer_email,
+        'buyer_firstname': buyer_first_name,
+        'buyer_lastname': buyer_last_name,
+        'buyer_address': buyer_address if buyer_address else '',
+        'buyer_city': buyer_city if buyer_city else '',
+        'buyer_state': buyer_state if buyer_state else '',
+        'buyer_country': buyer_country if buyer_country else '',
         'amount': amount,
-        'UID': uid,
-        'privatekey': privatekey,
-        'mercid': merchant_id,
-        'chmod': '',  # Payment mode - empty means show all available options
-        'kittype': 'inline',  # Required field - inline integration
-        'checksum': checksum,
-        'currency': currency,
-        'isocurrency': iso_currency,
-        'token': '',  # Empty token field (not using tokenization)
+        'orderid': order_id,
+        'buyer_phone': buyer_phone,
+        'buyer_pincode': buyer_pincode if buyer_pincode else '',
+        'iso_currency': iso_currency,
+        'currency_code': currency,
+        'merchant_id': merchant_id,
+        'mer_dom': mer_dom
     }
 
-    print(f"[AIRPAY DEBUG] Final payment params: {payment_params}")
+    # Step 3: Encrypt payment data
+    functions = AirpayV4Functions()
+    data_json = json.dumps(post_data)
+    request_data = functions.encrypt_string(data_json, username, password)
+
+    # Step 4: Calculate checksum
+    checksum_req = functions.checksum_cal(post_data)
+
+    # Step 5: Generate privatekey
+    privatekey = functions.encrypt_sha(f"{username}:|:{password}", secret_key)
+
+    # Step 6: Build payment URL with token
+    payment_url = f'https://payments.airpay.co.in/pay/v4/index.php?token={access_token}'
+
+    # Return parameters for form submission
+    payment_params = {
+        'privatekey': privatekey,
+        'merchant_id': merchant_id,
+        'encdata': request_data,
+        'checksum': checksum_req,
+        'chmod': '',  # Empty chmod as per reference
+        'payment_url': payment_url
+    }
+
+    print(f"[AIRPAY V4 DEBUG] Payment params prepared successfully")
 
     return payment_params
 
@@ -256,15 +331,17 @@ def build_payment_request(
 def validate_callback_response(
     response_data: Dict[str, str],
     merchant_id: str,
-    username: str
-) -> Dict[str, any]:
+    username: str,
+    password: str
+) -> Dict[str, Any]:
     """
-    Validate and parse Airpay callback response
+    Validate and parse Airpay V4 callback response
 
     Args:
-        response_data: Form data from Airpay callback
+        response_data: Form data from Airpay callback (contains 'response' field)
         merchant_id: Airpay merchant ID
         username: Airpay username
+        password: Airpay password
 
     Returns:
         Dictionary with validation result and parsed data
@@ -279,42 +356,52 @@ def validate_callback_response(
         'message': None
     }
 
-    # Check for required fields
-    required_fields = ['TRANSACTIONID', 'APTRANSACTIONID', 'AMOUNT',
-                      'TRANSACTIONSTATUS', 'ap_SecureHash']
-
-    missing_fields = []
-    for field in required_fields:
-        if not response_data.get(field):
-            missing_fields.append(field)
-
-    if missing_fields:
-        result['error'] = f"Missing required fields: {', '.join(missing_fields)}"
+    # Check for response field
+    if 'response' not in response_data or not response_data['response']:
+        result['error'] = "Response is empty or missing 'response' field"
         return result
 
-    # Verify checksum
-    checksum_obj = AirpayChecksum()
-    is_valid, calculated_hash = checksum_obj.verify_response_checksum(
-        response_data,
-        merchant_id,
-        username
-    )
+    try:
+        # Decrypt response
+        functions = AirpayV4Functions()
+        decrypted_data = functions.decrypt_string(response_data['response'], username, password)
+        data_dict = json.loads(decrypted_data)
 
-    if not is_valid:
-        result['error'] = (
-            f"Checksum verification failed. "
-            f"Airpay hash: {response_data.get('ap_SecureHash')}, "
-            f"Calculated hash: {calculated_hash}"
+        # Extract data from response
+        data = data_dict.get('data', {})
+
+        transaction_id = str(data.get('orderid', '')).strip()
+        ap_transaction_id = str(data.get('ap_transactionid', '')).strip()
+        amount = str(data.get('amount', '')).strip()
+        transaction_status = str(data.get('transaction_status', '')).strip()
+        message = str(data.get('message', '')).strip()
+
+        # Verify checksum
+        is_valid, calculated_hash = functions.verify_response_checksum(
+            data,
+            merchant_id,
+            username
         )
+
+        if not is_valid:
+            result['error'] = (
+                f"Checksum verification failed. "
+                f"Airpay hash: {data.get('ap_securehash')}, "
+                f"Calculated hash: {calculated_hash}"
+            )
+            return result
+
+        # Parse response data
+        result['valid'] = True
+        result['transaction_id'] = transaction_id
+        result['ap_transaction_id'] = ap_transaction_id
+        result['amount'] = amount
+        result['status'] = transaction_status
+        result['message'] = message
+        result['custom_var'] = data.get('custom_var', '')
+
         return result
 
-    # Parse response data
-    result['valid'] = True
-    result['transaction_id'] = response_data.get('TRANSACTIONID')
-    result['ap_transaction_id'] = response_data.get('APTRANSACTIONID')
-    result['amount'] = response_data.get('AMOUNT')
-    result['status'] = response_data.get('TRANSACTIONSTATUS')
-    result['message'] = response_data.get('MESSAGE')
-    result['custom_var'] = response_data.get('CUSTOMVAR', '')
-
-    return result
+    except Exception as e:
+        result['error'] = f"Error decrypting/parsing response: {str(e)}"
+        return result

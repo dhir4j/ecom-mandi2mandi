@@ -31,7 +31,12 @@ class Config:
     AIRPAY_USERNAME = os.environ.get('AIRPAY_USERNAME', '')
     AIRPAY_PASSWORD = os.environ.get('AIRPAY_PASSWORD', '')
     AIRPAY_SECRET_KEY = os.environ.get('AIRPAY_SECRET_KEY', '')
-    AIRPAY_BASE_URL = os.environ.get('AIRPAY_BASE_URL', 'https://payments.airpay.co.in/pay/index.php')
+    # Airpay V4 OAuth2 credentials
+    AIRPAY_CLIENT_ID = os.environ.get('AIRPAY_CLIENT_ID', '')
+    AIRPAY_CLIENT_SECRET = os.environ.get('AIRPAY_CLIENT_SECRET', '')
+    # Airpay V4 API URLs
+    AIRPAY_BASE_URL = os.environ.get('AIRPAY_BASE_URL', 'https://payments.airpay.co.in/pay/v4/index.php')
+    AIRPAY_OAUTH_URL = os.environ.get('AIRPAY_OAUTH_URL', 'https://kraken.airpay.co.in/airpay/pay/v4/api/oauth2/')
 
     # SQLAlchemy Configuration
     SQLALCHEMY_DATABASE_URI = (
