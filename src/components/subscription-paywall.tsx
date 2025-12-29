@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Check, Lock, Phone, Crown } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
@@ -17,6 +18,7 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
   const { user } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedGateway, setSelectedGateway] = useState<'payu' | 'sabpaisa' | 'airpay'>('payu');
+  const [phoneNumber, setPhoneNumber] = useState('');
 
   const handleSubscribe = async () => {
     console.log('Subscribe button clicked');
@@ -30,6 +32,15 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
       return;
     }
 
+    // Validate phone number for Airpay
+    if (selectedGateway === 'airpay') {
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
+      if (!cleanPhone || cleanPhone.length !== 10) {
+        alert('Please enter a valid 10-digit mobile number for Airpay payment');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     console.log('Starting payment process...');
 
@@ -41,7 +52,7 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
         productinfo: 'Mandi2Mandi Premium Subscription - Monthly',
         firstname: user.name,
         email: user.email,
-        phone: '0000000000', // Can be updated if user phone is stored
+        phone: selectedGateway === 'airpay' ? phoneNumber.replace(/\D/g, '') : '0000000000',
         gateway: selectedGateway, // Include selected gateway
       };
 
@@ -301,6 +312,34 @@ export function SubscriptionPaywall({ open, onOpenChange, onSuccess }: Subscript
               </button>
             </div>
           </div>
+
+          {/* Phone Number Input - Only for Airpay */}
+          {selectedGateway === 'airpay' && (
+            <div className="space-y-2 pt-2">
+              <label htmlFor="phone" className="text-sm font-semibold flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                Mobile Number (Required for Airpay)
+              </label>
+              <Input
+                type="tel"
+                id="phone"
+                placeholder="Enter 10-digit mobile number"
+                value={phoneNumber}
+                onChange={(e) => {
+                  // Only allow digits and limit to 10 characters
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setPhoneNumber(value);
+                }}
+                maxLength={10}
+                disabled={isProcessing}
+                required
+                className="h-11"
+              />
+              <p className="text-xs text-muted-foreground">
+                Your mobile number is required for Airpay payment processing
+              </p>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="space-y-2 pt-4">
