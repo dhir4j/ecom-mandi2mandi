@@ -320,10 +320,11 @@ def build_payment_request(
         'encdata': request_data,
         'checksum': checksum_req,
         'chmod': '',  # Empty chmod as per reference
-        'payment_url': payment_url
+        'airpay_url': payment_url  # Frontend expects 'airpay_url' field
     }
 
     print(f"[AIRPAY V4 DEBUG] Payment params prepared successfully")
+    print(f"[AIRPAY V4 DEBUG] Payment URL: {payment_url[:50]}...")
 
     return payment_params
 
