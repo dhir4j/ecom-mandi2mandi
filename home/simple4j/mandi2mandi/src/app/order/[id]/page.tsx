@@ -1,6 +1,8 @@
 import { getProductById } from '@/lib/products';
-import { ProductBuyPage } from '@/components/product-buy-page';
+import { ProductBuyContent } from '@/components/product-buy-content';
 import { notFound } from 'next/navigation';
+import Header from '@/components/header';
+import Footer from '@/components/footer';
 
 export default async function OrderPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -14,5 +16,11 @@ export default async function OrderPage({ params }: { params: { id: string } }) 
     notFound();
   }
 
-  return <ProductBuyPage product={product} />;
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <ProductBuyContent product={product} />
+      <Footer />
+    </div>
+  );
 }
