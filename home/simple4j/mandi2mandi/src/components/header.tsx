@@ -1,12 +1,14 @@
 'use client';
 
-import { Menu, Leaf, LogOut, Shield, Layers } from 'lucide-react';
+import { Menu, Leaf, LogOut, Shield, Layers, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from './ui/button';
+import { Badge } from './ui/badge';
 import { ThemeToggle } from './theme-toggle';
 import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
+import { useCart } from '@/contexts/CartContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +20,7 @@ import {
 
 export function Header({ className }: { className?: string }) {
   const { isAuthenticated, user, logout } = useAuth();
+  const { cartCount } = useCart();
   const isPrivilegedUser = user?.role === 'farmer' || user?.role === 'trader';
   const isAdmin = user?.role === 'admin';
 
@@ -138,6 +141,19 @@ export function Header({ className }: { className?: string }) {
                 </Button>
               ))}
 
+              {isAuthenticated && (
+                <Button variant="ghost" asChild className="relative">
+                  <Link href="/cart">
+                    <ShoppingCart className="h-5 w-5" />
+                    {cartCount > 0 && (
+                      <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
+                        {cartCount}
+                      </Badge>
+                    )}
+                  </Link>
+                </Button>
+              )}
+
               {isAuthenticated ? (
                 <>
                   {isPrivilegedUser && (
@@ -187,6 +203,18 @@ export function Header({ className }: { className?: string }) {
 
             {/* Mobile Navigation */}
             <div className="flex items-center gap-2 md:hidden">
+              {isAuthenticated && (
+                <Button variant="ghost" size="icon" asChild className="relative">
+                  <Link href="/cart">
+                    <ShoppingCart className="h-5 w-5" />
+                    {cartCount > 0 && (
+                      <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
+                        {cartCount}
+                      </Badge>
+                    )}
+                  </Link>
+                </Button>
+              )}
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="outline" size="icon">
@@ -225,6 +253,12 @@ export function Header({ className }: { className?: string }) {
                       ))}
                       {isAuthenticated && (
                         <>
+                          <SheetClose asChild>
+                            <Link href="/cart" className="text-lg font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+                              <ShoppingCart className="h-5 w-5" />
+                              Cart {cartCount > 0 && `(${cartCount})`}
+                            </Link>
+                          </SheetClose>
                           {isPrivilegedUser && (
                             <SheetClose asChild>
                               <Link href="/dashboard" className="text-lg font-medium text-muted-foreground hover:text-foreground">Dashboard</Link>

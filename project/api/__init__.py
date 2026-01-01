@@ -27,7 +27,7 @@ def create_app(config_class=None):
         "https://6000-firebase-studio-1750850256213.cluster-fdkw7vjj7bgguspe3fbbc25tra.cloudworkstations.dev"
     ])
 
-    from .models import User, Product, Image, Order, Inquiry, ChatMessage
+    from .models import User, Product, Image, Order, Cart, CartItem, Inquiry, ChatMessage
     
     with app.app_context():
         # ✅ FIXED: Only create tables if they don't exist
@@ -53,6 +53,9 @@ def create_app(config_class=None):
 
     from .inquiries import inquiries_bp
     app.register_blueprint(inquiries_bp, url_prefix='/api/inquiries')
+
+    from .cart import cart_bp
+    app.register_blueprint(cart_bp)
 
     from .admin import admin_bp
     app.register_blueprint(admin_bp, url_prefix='/api/admin')

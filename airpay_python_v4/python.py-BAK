@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+ 
+print("Content-type: text/html\n")
+ 
+import cgi
+ 
+form = cgi.FieldStorage()
+username = form.getvalue("username")
+ 
+print("<html><body>")
+print("<h2>Received username:</h2>")
+print("<p>{}</p>".format(username))
+print("<p>Hello</p>")
+print("</body></html>")

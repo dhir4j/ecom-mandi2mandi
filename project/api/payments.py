@@ -4,7 +4,7 @@ import uuid
 import hashlib
 import re
 from . import db
-from .models import Order, Inquiry
+from .models import Order, Inquiry, Cart, CartItem
 from .sabpaisa_utils import (
     build_payment_request,
     create_encrypted_request,
@@ -345,6 +345,144 @@ def initiate_payment():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@payments_bp.route('/initiate-cart-payment', methods=['POST'])
+@login_required
+def initiate_cart_payment():
+    """
+    Initiate payment for all items in cart
+    Creates orders for each cart item and returns payment gateway params
+    """
+    data = request.get_json()
+
+    required_fields = [
+        'paymentOption', 'buyerName', 'mobile',
+        'pincode', 'addressLine1', 'city', 'state'
+    ]
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        # Get user's cart
+        cart = Cart.query.filter_by(user_id=current_user.id).first()
+
+        if not cart or len(cart.items) == 0:
+            return jsonify({"error": "Cart is empty"}), 400
+
+        # Get selected gateway (default to PayU for backward compatibility)
+        gateway = data.get('gateway', 'payu').lower()
+
+        # Generate unique transaction ID for this cart checkout
+        txnid = str(uuid.uuid4())
+
+        # Calculate total amount
+        total_amount = sum([item.quantity * item.price_per_unit for item in cart.items])
+
+        # Create orders for each cart item
+        created_orders = []
+        for item in cart.items:
+            item_total = item.quantity * item.price_per_unit
+            new_order = Order(
+                user_id=current_user.id,
+                product_name=item.product_name,
+                quantity=item.quantity,
+                unit=item.unit,
+                total_price=item_total,
+                amount_paid=item_total,
+                payment_option=data['paymentOption'],
+                utr_code=txnid,  # Same txnid for all items in this cart checkout
+                buyer_name=data['buyerName'],
+                buyer_mobile=data['mobile'],
+                pincode=data['pincode'],
+                address_line_1=data['addressLine1'],
+                address_line_2=data.get('addressLine2', ''),
+                city=data['city'],
+                state=data['state'],
+                status='Pending'
+            )
+            db.session.add(new_order)
+            created_orders.append(new_order)
+
+        db.session.commit()
+
+        # Prepare payment gateway params based on gateway selection
+        if gateway == 'sabpaisa':
+            # SabPaisa payment gateway
+            client_code = current_app.config['SABPAISA_CLIENT_CODE']
+            payment_request = build_payment_request(
+                client_code=client_code,
+                transaction_id=txnid,
+                amount=total_amount,
+                buyer_name=data['buyerName'],
+                buyer_email=current_user.email,
+                buyer_phone=data['mobile'],
+                currency='INR'
+            )
+
+            sabpaisa_params = create_encrypted_request(payment_request)
+            sabpaisa_params['sabpaisa_url'] = current_app.config['SABPAISA_BASE_URL']
+            return jsonify(sabpaisa_params)
+
+        elif gateway == 'airpay':
+            # Airpay V4 payment gateway
+            buyer_first_name, buyer_last_name = split_name_for_airpay(data['buyerName'])
+
+            # Generate product description
+            product_desc = f"Cart checkout - {len(cart.items)} items"
+
+            airpay_params = build_airpay_request(
+                buyer_email=current_user.email,
+                buyer_phone=data['mobile'],
+                buyer_first_name=buyer_first_name,
+                buyer_last_name=buyer_last_name,
+                amount=total_amount,
+                order_id=txnid,
+                product_details=product_desc
+            )
+
+            airpay_params['airpay_url'] = current_app.config['AIRPAY_BASE_URL']
+            return jsonify(airpay_params)
+
+        else:
+            # PayU payment gateway (default)
+            key = current_app.config['PAYU_KEY']
+            salt = current_app.config['PAYU_SALT']
+
+            # Generate product description
+            product_name = f"Cart checkout - {len(cart.items)} items"
+
+            amount_str = f"{total_amount:.2f}"
+            email = current_user.email
+            productinfo = product_name
+            firstname = data['buyerName']
+            phone = data['mobile']
+
+            # Generate hash
+            hash_string = f"{key}|{txnid}|{amount_str}|{productinfo}|{firstname}|{email}|||||||||||{salt}"
+            hash_value = hashlib.sha512(hash_string.encode('utf-8')).hexdigest()
+
+            # Payment parameters
+            payu_params = {
+                'key': key,
+                'txnid': txnid,
+                'amount': amount_str,
+                'productinfo': productinfo,
+                'firstname': firstname,
+                'email': email,
+                'phone': phone,
+                'surl': f"{current_app.config.get('FRONTEND_URL', 'https://mandi2mandi.com')}/payment-success",
+                'furl': f"{current_app.config.get('FRONTEND_URL', 'https://mandi2mandi.com')}/payment-failure",
+                'hash': hash_value
+            }
+
+            # Use production URL
+            payu_params['payu_url'] = 'https://secure.payu.in/_payment'
+
+            return jsonify(payu_params)
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to initiate cart payment: {str(e)}'}), 500
+
 @payments_bp.route('/payment-success', methods=['POST'])
 def payment_success():
     """Handle successful payment callback from PayU"""
@@ -361,10 +499,17 @@ def payment_success():
         
         # Update order status
         order = Order.query.filter_by(utr_code=payu_data.get('txnid')).first()
-        
+
         if order:
             order.status = 'Booked'
             order.utr_code = payu_data.get('mihpayid', payu_data.get('txnid'))  # Update with PayU transaction ID
+
+            # Clear cart after successful payment (for cart checkout)
+            # This will only clear if it was a cart checkout (multiple orders with same txnid)
+            user_cart = Cart.query.filter_by(user_id=order.user_id).first()
+            if user_cart:
+                CartItem.query.filter_by(cart_id=user_cart.id).delete()
+
             db.session.commit()
         
         # FIXED: Using correct frontend URL    

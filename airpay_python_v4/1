@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+import cgi
+import cgitb
+import json
+import config
+import datetime
+import hashlib
+import base64
+import requests
+import sys
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
+class Functions:
+    @staticmethod
+    def aes256encrypt(data, cipher, username, password):
+        key = hashlib.md5((username + "~:~" + password).encode()).hexdigest()
+        iv = ''.join(['{:02x}'.format(x) for x in range(8)])
+        encrypted = Functions.encrypt(data.encode(), key.encode(), iv.encode(), cipher)
+        encrypted_data = base64.b64encode(encrypted.encode()).decode()
+        return iv + encrypted_data
+
+    @staticmethod
+    def encrypt(request, secret_key):
+        iv = ''.join(['{:02x}'.format(x) for x in range(8)])
+        raw = Functions.encrypt(request.encode(), secret_key.encode(), iv.encode(), 'AES-256-CBC')
+        data = iv + base64.b64encode(raw.encode()).decode()
+        return data
+
+    @staticmethod
+    def encrypt_sha(data, salt):
+        key = hashlib.sha256((salt + '@' + data).encode()).hexdigest()
+        return key
+
+    @staticmethod
+    def decrypt(request_data, secret_key):
+        iv = request_data[:16]
+        encrypted_data = request_data[16:]
+        raw = Functions.decrypt(base64.b64decode(encrypted_data.encode()), secret_key.encode(), iv.encode(), 'AES-256-CBC')
+        return raw.decode()
+    @staticmethod
+    def decrypt_string(request_data, secret_key):
+        iv = request_data[:16]
+        encrypted_data = request_data[16:]
+        raw = Functions.decrypt(base64.b64decode(encrypted_data.encode()), secret_key.encode(), iv.encode(), 'AES-256-CBC')
+        return raw.decode()
+
+
+    @staticmethod
+    def checksumcal(post_data):
+        sorted_data = ''.join([str(value) for key, value in sorted(post_data.items())])
+        return Functions.calculate_checksum_helper(sorted_data + 'Y-m-d')
+
+    @staticmethod
+    def calculate_checksum_helper(data):
+        return Functions.make_enc(data)
+
+    @staticmethod
+    def make_enc(data):
+        key = hashlib.sha256(data.encode()).hexdigest()
+        return key
+
+    @staticmethod
+    def send_post_data(token_url, post_data):
+        response = requests.post(token_url, data=post_data, verify=False)
+        return response.text
+
+    @staticmethod
+    def encrypt(data, key, iv, cipher):
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        encrypted_data = encryptor.update(data) + encryptor.finalize()
+        return encrypted_data
+
+    @staticmethod
+    def decrypt(encrypted_data, key, iv, cipher):
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        decrypted_data = decryptor.update(encrypted_data) + decryptor.finalize()
+        return decrypted_data
+
+   
+ 
+# Set the content type
+print("Content-type: text/html\n")
+
+# Extract form data
+form = cgi.FieldStorage()
+buyerEmail = form.getvalue('buyerEmail')
+buyerPhone = form.getvalue('buyerPhone')
+buyerFirstName = form.getvalue('buyerFirstName')
+buyerLastName = form.getvalue('buyerLastName')
+buyerAddress = form.getvalue('buyerAddress')
+amount = form.getvalue('amount')
+buyerCity = form.getvalue('buyerCity')
+buyerState = form.getvalue('buyerState')
+buyerPinCode = form.getvalue('buyerPinCode')
+buyerCountry = form.getvalue('buyerCountry')
+orderid = form.getvalue('orderid')
+currency = form.getvalue('currency')
+isocurrency = form.getvalue('isocurrency')
+
+ 
+# Include the configuration
+mercid = '247033'
+username = '5326492'
+password = 'c3Tpjp7A'
+secret = 'hgrTsTTUrH7xvRN9'
+client_id = '1b3817'
+client_secret = '5a06ee4c8ed231ef1a924cb58b885991'
+token_url = 'https://kraken.airpay.co.in/airpay/pay/v4/api/oauth2/token.php'
+payment_url = 'https://payments.airpay.co.in/pay/v4/index.php'
+ 
+
+
+# Oauth2
+access_token = ""
+request = {
+'client_id': client_id,
+'client_secret': client_secret,
+'grant_type': 'client_credentials',
+'merchant_id': mercid
+}
+print("request",request) 
+secret_key = hashlib.md5((username + "~:~" + password).encode()).hexdigest()
+print("Secret Key:", secret_key)
+encre = Functions.encrypt(json.dumps(request), secret_key)
+print("encrypted",encre)
+req = {
+'merchant_id': request['merchant_id'],
+'encdata': encre,
+'checksum': Functions.checksumcal(request)
+}
+ 
+access_token = Functions.send_post_data(token_url, req)
+print("accesstoken",access_token)
+decrypt_data = Functions.decrypt(json.loads(access_token), secret_key)
+print("decrypttoken",decrypt_data)
+token_response = json.loads(decrypt_data)
+print("tokenresponse",token_response)
+ 
+if 'success' in token_response and not token_response['success']:
+    print(token_response['msg'])
+    exit()
+ 
+# Token
+access_token = token_response['data']['access_token']
+# Token append to URL
+payment_url += f'?token={access_token}'
+alldata = buyerEmail + buyerPhone+ buyerFirstName + buyerLastName + buyerAddress + buyerCity + buyerState  + buyerCountry + amount + orderid
+privatekey = Functions.encrypt_sha(username + ":|:" + password, secret)
+hiddenmod = ""
+checksum_req = Functions.checksumcal(form)
+data_json = json.dumps(form)
+request_data = Functions.aes256encrypt(data_json, 'aes-256-cbc', username, password)
+
+# HTML response
+print("""
+http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Airpay</title>
+<script type="text/javascript">
+function submitForm(){
+var form = document.forms[0];
+form.submit();
+}
+</script>
+</head>
+<body onload="javascript:submitForm()">
+<center>
+<table width="500px;">
+<tr>
+<td align="center" valign="middle">Do Not Refresh or Press Back <br/> Redirecting to Airpay</td>
+</tr>
+<tr>
+<td align="center" valign="middle">
+<form action="https://payments.airpay.co.in/pay/index.php" method="post">
+<input type="hidden" name="privatekey" value="{privatekey}">
+<input type="hidden" name="merchant_id" value="{mercid}">
+<input type="hidden" name="encdata" value="{request_data}">
+<input type="hidden" name="checksum" value="{checksum_req}">
+</form>
+</td>
+</tr>
+</table>
+</center>
+</body>
+</html>
+""")
+
+
+
+

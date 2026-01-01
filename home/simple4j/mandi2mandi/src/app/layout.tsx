@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { Inter, PT_Sans } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { AuthProvider } from '@/hooks/use-auth';
+import { CartProvider } from '@/contexts/CartContext';
 
 const ptSans = PT_Sans({
   subsets: ['latin'],
@@ -31,8 +32,10 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            {children}
-            <Toaster />
+            <CartProvider>
+              {children}
+              <Toaster />
+            </CartProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

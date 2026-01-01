@@ -145,6 +145,62 @@ class Order(db.Model):
             }
         }
 
+class Cart(db.Model):
+    """Cart Model - shopping cart for buyers"""
+    __tablename__ = 'carts'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    created_on = db.Column(db.DateTime, nullable=False, default=datetime.datetime.now)
+    updated_on = db.Column(db.DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    # Relationships
+    user = db.relationship('User', backref='cart', uselist=False)
+    items = db.relationship('CartItem', backref='cart', lazy=True, cascade="all, delete-orphan")
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'userId': self.user_id,
+            'items': [item.to_json() for item in self.items],
+            'totalItems': len(self.items),
+            'totalAmount': sum([item.quantity * item.price_per_unit for item in self.items]),
+            'createdOn': self.created_on.isoformat(),
+            'updatedOn': self.updated_on.isoformat(),
+        }
+
+class CartItem(db.Model):
+    """CartItem Model - individual items in cart"""
+    __tablename__ = 'cart_items'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cart_id = db.Column(db.Integer, db.ForeignKey('carts.id'), nullable=False)
+    product_id = db.Column(db.String(100), nullable=False)  # Product ID from JSON data
+    product_name = db.Column(db.String(200), nullable=False)
+    price_per_unit = db.Column(db.Float, nullable=False)
+    unit = db.Column(db.String(50), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    image_url = db.Column(db.String(500), nullable=True)
+    seller_name = db.Column(db.String(150), nullable=True)
+    location = db.Column(db.String(200), nullable=True)
+    created_on = db.Column(db.DateTime, nullable=False, default=datetime.datetime.now)
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'cartId': self.cart_id,
+            'productId': self.product_id,
+            'productName': self.product_name,
+            'pricePerUnit': self.price_per_unit,
+            'unit': self.unit,
+            'quantity': self.quantity,
+            'imageUrl': self.image_url,
+            'sellerName': self.seller_name,
+            'location': self.location,
+            'subtotal': self.quantity * self.price_per_unit,
+            'createdOn': self.created_on.isoformat(),
+        }
+
 class Inquiry(db.Model):
     """Inquiry Model - for buyer inquiries awaiting seller approval"""
     __tablename__ = 'inquiries'
