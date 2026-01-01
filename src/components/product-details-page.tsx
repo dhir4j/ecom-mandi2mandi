@@ -18,6 +18,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { InquiryTutorialModal } from '@/components/inquiry-tutorial-modal';
+import { useCart } from '@/contexts/CartContext';
 
 type ProductDetailsPageProps = {
   product: Product;
@@ -36,6 +37,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
+  const { addToCart, minimumQuantity } = useCart();
   const [selectedImage, setSelectedImage] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
@@ -45,6 +47,9 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const [userInquiry, setUserInquiry] = useState<any>(null);
   const [isLoadingInquiry, setIsLoadingInquiry] = useState(true);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
+  const [quantity, setQuantity] = useState<number>(minimumQuantity);
+  const [loading, setLoading] = useState(false);
+  const [buyNowLoading, setBuyNowLoading] = useState(false);
   const description = generateProductDescription(product);
 
   // Fetch user's inquiry for this product - USING THE SAME API AS MY-INQUIRIES PAGE
@@ -113,6 +118,126 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   useEffect(() => {
     fetchUserInquiry();
   }, [isAuthenticated, user?.id, product.id]);
+
+  // New Buy handlers
+  const handleAddToCart = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: 'Login Required',
+        description: 'Please login to add items to cart',
+        variant: 'destructive',
+      });
+      router.push('/login');
+      return;
+    }
+
+    if (quantity < minimumQuantity) {
+      toast({
+        title: 'Invalid Quantity',
+        description: `Minimum order quantity is ${minimumQuantity} ${product.unit}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    const result = await addToCart({
+      id: product.id,
+      title: product.title,
+      price: product.price,
+      unit: product.unit,
+      images: product.images,
+      category: product.category,
+      subcategory: product.subcategory,
+      quantity: quantity,
+    });
+
+    setLoading(false);
+
+    if (result.success) {
+      toast({
+        title: 'Added to Cart',
+        description: `${quantity} ${product.unit} of ${product.title} added to cart`,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: result.message || 'Failed to add to cart',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDirectBuyNow = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: 'Login Required',
+        description: 'Please login to purchase',
+        variant: 'destructive',
+      });
+      router.push('/login');
+      return;
+    }
+
+    if (quantity < minimumQuantity) {
+      toast({
+        title: 'Invalid Quantity',
+        description: `Minimum order quantity is ${minimumQuantity} ${product.unit}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setBuyNowLoading(true);
+
+    try {
+      const totalAmount = product.price * quantity;
+      const paymentData = {
+        product_id: product.id,
+        product_name: product.title,
+        quantity: quantity,
+        unit: product.unit,
+        price_per_unit: product.price,
+        total_amount: totalAmount,
+      };
+
+      const response = await fetch('https://www.mandi.ramhotravels.com/api/initiate-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(paymentData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to initiate payment');
+      }
+
+      const data = await response.json();
+
+      if (data.airpay_url) {
+        window.location.href = data.airpay_url;
+      } else {
+        throw new Error('No payment URL received');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast({
+        title: 'Payment Error',
+        description: 'Failed to initiate payment. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setBuyNowLoading(false);
+    }
+  };
+
+  const handleQuantityChange = (newQuantity: number) => {
+    if (newQuantity >= minimumQuantity) {
+      setQuantity(newQuantity);
+    }
+  };
 
   const handleContactSeller = () => {
     if (!isAuthenticated) {
@@ -557,74 +682,64 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
                   )}
 
                   <div className="flex flex-col gap-2 md:gap-3">
-                    {/* APPROVED: Show Buy Now button */}
-                    {!isLoadingInquiry && userInquiry && userInquiry.status?.toLowerCase() === 'approved' && (
-                      <Button
-                        onClick={handleBuyNow}
-                        className="w-full h-12 md:h-14 text-base md:text-xl font-bold bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg animate-pulse"
-                        size="lg"
-                      >
-                        <ShoppingCart className="h-6 w-6 mr-2" />
-                        🎉 Buy Now - ₹{(userInquiry.finalTotal || userInquiry.estimatedPrice)?.toLocaleString('en-IN')}
-                      </Button>
-                    )}
+                    {/* Quantity Selector */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        Quantity (Min: {minimumQuantity} {product.unit})
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleQuantityChange(quantity - 100)}
+                          disabled={quantity <= minimumQuantity}
+                          className="h-10 w-10 p-0"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <input
+                          type="number"
+                          value={quantity}
+                          onChange={(e) => handleQuantityChange(parseInt(e.target.value) || minimumQuantity)}
+                          min={minimumQuantity}
+                          step="100"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-center"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleQuantityChange(quantity + 100)}
+                          className="h-10 w-10 p-0"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Total: ₹{(product.price * quantity).toLocaleString('en-IN')}
+                      </p>
+                    </div>
 
-                    {/* Show Chat button if inquiry exists */}
-                    {!isLoadingInquiry && userInquiry && (
-                      <Button
-                        onClick={handleChatWithSeller}
-                        variant={userInquiry.status?.toLowerCase() === 'approved' ? 'outline' : 'default'}
-                        className="w-full h-10 md:h-11 text-sm md:text-base"
-                        size="lg"
-                      >
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        Chat with Seller
-                      </Button>
-                    )}
-
-                    {/* Send NEW Inquiry button - show when inquiry exists */}
-                    {!isLoadingInquiry && userInquiry && (
-                      <Button
-                        onClick={handleSendInquiry}
-                        variant="outline"
-                        className="w-full h-10 md:h-11 text-sm md:text-base border-2 border-primary"
-                        size="lg"
-                      >
-                        <ShoppingBag className="h-4 w-4 mr-2" />
-                        Send New Inquiry
-                      </Button>
-                    )}
-
-                    {/* Primary CTA - Send Inquiry (only show if NO inquiry exists) */}
-                    {!isLoadingInquiry && !userInquiry && (
-                      <Button
-                        onClick={handleSendInquiry}
-                        className="w-full h-11 md:h-12 text-base md:text-lg font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg"
-                        size="lg"
-                      >
-                        <ShoppingBag className="h-5 w-5 mr-2" />
-                        Send Purchase Inquiry
-                      </Button>
-                    )}
-
-                    {/* Secondary CTA - Contact Seller (always show) */}
+                    {/* Buy Now Button */}
                     <Button
-                      onClick={handleContactSeller}
-                      variant="outline"
-                      className="w-full h-10 md:h-11 text-sm md:text-base border-2"
+                      onClick={handleDirectBuyNow}
+                      disabled={buyNowLoading}
+                      className="w-full h-12 md:h-14 text-base md:text-xl font-bold bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg"
                       size="lg"
                     >
-                      {user?.hasSubscription || showContactNumber ? (
-                        <>
-                          <Phone className="h-4 w-4 mr-2" />
-                          View Contact
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="h-4 w-4 mr-2" />
-                          Unlock Contact
-                        </>
-                      )}
+                      <ShoppingCart className="h-6 w-6 mr-2" />
+                      {buyNowLoading ? 'Processing...' : `Buy Now - ₹${(product.price * quantity).toLocaleString('en-IN')}`}
+                    </Button>
+
+                    {/* Add to Cart Button */}
+                    <Button
+                      onClick={handleAddToCart}
+                      disabled={loading}
+                      variant="outline"
+                      className="w-full h-10 md:h-11 text-sm md:text-base border-2 border-primary"
+                      size="lg"
+                    >
+                      <ShoppingBag className="h-4 w-4 mr-2" />
+                      {loading ? 'Adding...' : 'Add to Cart'}
                     </Button>
                   </div>
 
