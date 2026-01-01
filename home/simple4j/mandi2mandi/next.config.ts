@@ -1,4 +1,5 @@
 import type {NextConfig} from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -8,6 +9,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  outputFileTracingRoot: path.join(__dirname),
   images: {
     remotePatterns: [
       {
