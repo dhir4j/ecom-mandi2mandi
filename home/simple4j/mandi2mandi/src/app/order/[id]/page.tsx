@@ -1,5 +1,5 @@
 import { getProductById } from '@/lib/products';
-import { OrderClientPage } from '@/components/order-client-page';
+import { ProductBuyPage } from '@/components/product-buy-page';
 import { notFound } from 'next/navigation';
 
 export default async function OrderPage({ params }: { params: { id: string } }) {
@@ -14,5 +14,5 @@ export default async function OrderPage({ params }: { params: { id: string } }) 
     notFound();
   }
 
-  return <OrderClientPage product={product} />;
+  return <ProductBuyPage product={product} />;
 }
