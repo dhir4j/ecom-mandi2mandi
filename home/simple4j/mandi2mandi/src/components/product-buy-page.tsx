@@ -289,7 +289,7 @@ export function ProductBuyPage({ product }: ProductBuyPageProps) {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-grow container mx-auto px-4 py-8">
+      <main className="flex-grow container mx-auto px-4 py-8 max-w-7xl">
         <Button variant="ghost" asChild className="mb-6">
           <Link href="/products">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -297,9 +297,9 @@ export function ProductBuyPage({ product }: ProductBuyPageProps) {
           </Link>
         </Button>
 
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="grid lg:grid-cols-5 gap-8">
           {/* Product Images */}
-          <div className="space-y-4">
+          <div className="lg:col-span-2 space-y-4">
             <Card className="overflow-hidden">
               <div className="relative aspect-square">
                 <Image
@@ -331,7 +331,7 @@ export function ProductBuyPage({ product }: ProductBuyPageProps) {
           </div>
 
           {/* Product Details & Purchase Form */}
-          <div className="space-y-6">
+          <div className="lg:col-span-3 space-y-6">
             <div>
               <h1 className="text-3xl font-bold mb-2">{product.title}</h1>
 
