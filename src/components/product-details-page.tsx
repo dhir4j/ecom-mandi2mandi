@@ -53,6 +53,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const [buyNowLoading, setBuyNowLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedGateway, setSelectedGateway] = useState<'payu' | 'sabpaisa' | 'airpay' | null>(null);
+  const [mobileNumber, setMobileNumber] = useState<string>('');
   const description = generateProductDescription(product);
 
   // Fetch user's inquiry for this product - USING THE SAME API AS MY-INQUIRIES PAGE
@@ -198,6 +199,28 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   };
 
   const handlePaymentGatewaySelect = async (gateway: 'payu' | 'sabpaisa' | 'airpay') => {
+    // For Airpay, validate mobile number first
+    if (gateway === 'airpay') {
+      const cleanMobile = mobileNumber.replace(/\D/g, '');
+      if (!cleanMobile || cleanMobile.length !== 10) {
+        toast({
+          title: 'Mobile Number Required',
+          description: 'Please enter a valid 10-digit mobile number for Airpay payment',
+          variant: 'destructive',
+        });
+        return;
+      }
+      // Validate it starts with 6-9 (Indian mobile format)
+      if (!['6', '7', '8', '9'].includes(cleanMobile[0])) {
+        toast({
+          title: 'Invalid Mobile Number',
+          description: 'Please enter a valid Indian mobile number starting with 6, 7, 8, or 9',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     setSelectedGateway(gateway);
     setBuyNowLoading(true);
 
@@ -211,6 +234,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
         price_per_unit: product.price,
         total_amount: totalAmount,
         gateway: gateway,
+        mobile: gateway === 'airpay' ? mobileNumber.replace(/\D/g, '') : undefined,
       };
 
       let endpoint = '';
@@ -883,6 +907,30 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-4">
+            {/* Mobile Number Input for Airpay */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <label htmlFor="mobile" className="block text-sm font-medium mb-2">
+                Mobile Number <span className="text-red-500">*</span> <span className="text-xs text-muted-foreground">(Required for Airpay)</span>
+              </label>
+              <input
+                id="mobile"
+                type="tel"
+                placeholder="Enter 10-digit mobile number"
+                value={mobileNumber}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  if (value.length <= 10) {
+                    setMobileNumber(value);
+                  }
+                }}
+                maxLength={10}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {mobileNumber.length === 10 ? '✓ Valid number' : `${mobileNumber.length}/10 digits`}
+              </p>
+            </div>
+
             {/* PayU */}
             <Button
               onClick={() => handlePaymentGatewaySelect('payu')}

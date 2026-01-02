@@ -313,12 +313,29 @@ def initiate_payment():
             print(f"[AIRPAY] Processing payment for txnid: {txnid}")
             buyer_first_name, buyer_last_name = split_name_for_airpay(current_user.name)
 
+            # Get mobile number from request (required for Airpay)
+            buyer_phone = data.get('mobile', '').strip()
+
+            # Validate mobile number
+            if not buyer_phone or len(buyer_phone) != 10:
+                return jsonify({'error': 'Valid 10-digit mobile number is required for Airpay'}), 400
+
+            # Ensure it's all digits
+            if not buyer_phone.isdigit():
+                return jsonify({'error': 'Mobile number must contain only digits'}), 400
+
+            # Validate Indian mobile format (starts with 6-9)
+            if buyer_phone[0] not in ['6', '7', '8', '9']:
+                return jsonify({'error': 'Mobile number must start with 6, 7, 8, or 9'}), 400
+
+            print(f"[AIRPAY] Using mobile number: {buyer_phone}")
+
             # Build Airpay V4 payment request (this gets OAuth2 token internally)
             airpay_params = build_airpay_request(
                 buyer_email=current_user.email or "",
                 buyer_first_name=buyer_first_name,
                 buyer_last_name=buyer_last_name,
-                buyer_phone='0000000000',  # Placeholder
+                buyer_phone=buyer_phone,  # Use real mobile number from user
                 buyer_address='Direct Buy',
                 buyer_city='Mumbai',
                 buyer_state='Maharashtra',

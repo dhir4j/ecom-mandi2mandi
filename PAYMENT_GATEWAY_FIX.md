@@ -164,13 +164,17 @@ Your Site → SabPaisa Payment Page → Enter Details → Success/Failure → Yo
 
 1. Go to a product page
 2. Select quantity and click "Buy Now"
-3. Choose "Airpay" from the payment options
-4. You should be redirected to Airpay's payment page
-5. **Test with real credentials** (Airpay V4 requires OAuth2, uses production credentials)
+3. **IMPORTANT:** Enter a valid 10-digit mobile number in the payment modal
+   - Must be 10 digits
+   - Must start with 6, 7, 8, or 9 (Indian mobile format)
+   - Example: `9876543210`
+4. Choose "Airpay" from the payment options
+5. You should be redirected to Airpay's payment page
+6. **Test with real credentials** (Airpay V4 requires OAuth2, uses production credentials)
 
 **Expected Flow:**
 ```
-Your Site → OAuth2 Token Request → Airpay Payment Page → Enter Details → Success/Failure → Your Confirmation Page
+Your Site → Enter Mobile → OAuth2 Token Request → Airpay Payment Page → Enter Details → Success/Failure → Your Confirmation Page
 ```
 
 ---
@@ -216,6 +220,12 @@ Open browser console (F12) and look for:
 - Backend should already handle OPTIONS requests
 - Verify CORS configuration in `project/api/__init__.py`
 - Check if `credentials: 'include'` is in frontend fetch calls
+
+**Issue 4: "Invalid mobile number" on Airpay page**
+- Make sure you entered a 10-digit mobile number in the modal
+- Mobile number must start with 6, 7, 8, or 9
+- Check browser console for validation errors
+- Backend validates mobile number before sending to Airpay
 
 ---
 
@@ -265,7 +275,18 @@ Open browser console (F12) and look for:
 
 ### Airpay V4 Direct Buy
 - **Endpoint:** `POST /api/initiate-payment`
-- **Request:** Same as PayU
+- **Request:** (Mobile number is required for Airpay)
+  ```json
+  {
+    "product_id": 123,
+    "product_name": "Product Name",
+    "quantity": 10,
+    "unit": "Kg",
+    "price_per_unit": 500,
+    "total_amount": 5000,
+    "mobile": "9876543210"
+  }
+  ```
 - **Response:**
   ```json
   {
