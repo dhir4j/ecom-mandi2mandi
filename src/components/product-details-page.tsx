@@ -13,7 +13,7 @@ import { InquiryFormModal } from '@/components/inquiry-form-modal';
 import { InquiryChatInterface } from '@/components/inquiry-chat-interface';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Calendar, User, Phone, Mail, Tag, Package, Lock, ShoppingBag, MessageSquare, ShoppingCart, RefreshCw } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, User, Phone, Mail, Tag, Package, Lock, ShoppingBag, MessageSquare, ShoppingCart, RefreshCw, Minus, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -142,14 +142,14 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
 
     setLoading(true);
     const result = await addToCart({
-      id: product.id,
-      title: product.title,
-      price: product.price,
+      productId: product.id,
+      productName: product.title,
+      pricePerUnit: product.price,
       unit: product.unit,
-      images: product.images,
-      category: product.category,
-      subcategory: product.subcategory,
       quantity: quantity,
+      imageUrl: product.images?.[0] || '',
+      sellerName: product.sellerName || '',
+      location: product.location || '',
     });
 
     setLoading(false);
