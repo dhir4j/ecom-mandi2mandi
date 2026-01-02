@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://www.mandi.ramhotravels.com';
-const MINIMUM_QUANTITY = 2000;
+const MINIMUM_AMOUNT = 2000; // Minimum purchase amount in rupees
 
 interface CartItem {
   id: number;
@@ -35,7 +35,7 @@ interface CartContextType {
   loading: boolean;
   error: string | null;
   cartCount: number;
-  minimumQuantity: number;
+  minimumAmount: number;
   fetchCart: () => Promise<void>;
   addToCart: (product: {
     productId: string;
@@ -101,11 +101,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
 
-      // Validate minimum quantity
-      if (product.quantity < MINIMUM_QUANTITY) {
+      // Validate minimum amount
+      const totalAmount = product.quantity * product.pricePerUnit;
+      if (totalAmount < MINIMUM_AMOUNT) {
         return {
           success: false,
-          message: `Minimum purchase quantity is ${MINIMUM_QUANTITY} ${product.unit}`
+          message: `Minimum purchase amount is ₹${MINIMUM_AMOUNT}. Current: ₹${totalAmount.toLocaleString('en-IN')}`
         };
       }
 
@@ -136,14 +137,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const updateCartItem = useCallback(async (itemId: number, quantity: number): Promise<{ success: boolean; message: string }> => {
     try {
       setError(null);
-
-      // Validate minimum quantity
-      if (quantity < MINIMUM_QUANTITY) {
-        return {
-          success: false,
-          message: `Minimum purchase quantity is ${MINIMUM_QUANTITY}`
-        };
-      }
 
       const response = await fetch(`${API_BASE_URL}/api/cart/update/${itemId}`, {
         method: 'PUT',
@@ -233,7 +226,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         loading,
         error,
         cartCount,
-        minimumQuantity: MINIMUM_QUANTITY,
+        minimumAmount: MINIMUM_AMOUNT,
         fetchCart,
         addToCart,
         updateCartItem,

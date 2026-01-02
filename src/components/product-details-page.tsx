@@ -37,7 +37,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
-  const { addToCart, minimumQuantity } = useCart();
+  const { addToCart, minimumAmount } = useCart();
   const [selectedImage, setSelectedImage] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
@@ -47,7 +47,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const [userInquiry, setUserInquiry] = useState<any>(null);
   const [isLoadingInquiry, setIsLoadingInquiry] = useState(true);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
-  const [quantity, setQuantity] = useState<number>(minimumQuantity);
+  const [quantity, setQuantity] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [buyNowLoading, setBuyNowLoading] = useState(false);
   const description = generateProductDescription(product);
@@ -131,10 +131,11 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
       return;
     }
 
-    if (quantity < minimumQuantity) {
+    const totalAmount = quantity * product.price;
+    if (totalAmount < minimumAmount) {
       toast({
-        title: 'Invalid Quantity',
-        description: `Minimum order quantity is ${minimumQuantity} ${product.unit}`,
+        title: 'Minimum Amount Required',
+        description: `Minimum purchase amount is ₹${minimumAmount}. Current: ₹${totalAmount.toLocaleString('en-IN')}`,
         variant: 'destructive',
       });
       return;
@@ -179,10 +180,11 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
       return;
     }
 
-    if (quantity < minimumQuantity) {
+    const totalAmount = quantity * product.price;
+    if (totalAmount < minimumAmount) {
       toast({
-        title: 'Invalid Quantity',
-        description: `Minimum order quantity is ${minimumQuantity} ${product.unit}`,
+        title: 'Minimum Amount Required',
+        description: `Minimum purchase amount is ₹${minimumAmount}. Current: ₹${totalAmount.toLocaleString('en-IN')}`,
         variant: 'destructive',
       });
       return;
@@ -234,7 +236,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   };
 
   const handleQuantityChange = (newQuantity: number) => {
-    if (newQuantity >= minimumQuantity) {
+    if (newQuantity >= 1) {
       setQuantity(newQuantity);
     }
   };
@@ -685,14 +687,14 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
                     {/* Quantity Selector */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
-                        Quantity (Min: {minimumQuantity} {product.unit})
+                        Quantity (Min Amount: ₹{minimumAmount})
                       </label>
                       <div className="flex items-center gap-3">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleQuantityChange(quantity - 100)}
-                          disabled={quantity <= minimumQuantity}
+                          onClick={() => handleQuantityChange(quantity - 1)}
+                          disabled={quantity <= 1}
                           className="h-10 w-10 p-0"
                         >
                           <Minus className="h-4 w-4" />
@@ -700,15 +702,14 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
                         <input
                           type="number"
                           value={quantity}
-                          onChange={(e) => handleQuantityChange(parseInt(e.target.value) || minimumQuantity)}
-                          min={minimumQuantity}
-                          step="100"
+                          onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
+                          min={1}
                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-center"
                         />
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleQuantityChange(quantity + 100)}
+                          onClick={() => handleQuantityChange(quantity + 1)}
                           className="h-10 w-10 p-0"
                         >
                           <Plus className="h-4 w-4" />
@@ -716,6 +717,11 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Total: ₹{(product.price * quantity).toLocaleString('en-IN')}
+                        {(product.price * quantity) < minimumAmount && (
+                          <span className="text-destructive ml-2">
+                            (Need ₹{(minimumAmount - product.price * quantity).toLocaleString('en-IN')} more)
+                          </span>
+                        )}
                       </p>
                     </div>
 
