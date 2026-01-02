@@ -7,13 +7,14 @@ import { Footer } from '@/components/footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { CategoryProductCarousel } from '@/components/category-product-carousel';
 import { SubscriptionPaywall } from '@/components/subscription-paywall';
 import { InquiryFormModal } from '@/components/inquiry-form-modal';
 import { InquiryChatInterface } from '@/components/inquiry-chat-interface';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Calendar, User, Phone, Mail, Tag, Package, Lock, ShoppingBag, MessageSquare, ShoppingCart, RefreshCw, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, User, Phone, Mail, Tag, Package, Lock, ShoppingBag, MessageSquare, ShoppingCart, RefreshCw, Minus, Plus, CreditCard } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -50,6 +51,8 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const [quantity, setQuantity] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [buyNowLoading, setBuyNowLoading] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedGateway, setSelectedGateway] = useState<'payu' | 'sabpaisa' | 'airpay' | null>(null);
   const description = generateProductDescription(product);
 
   // Fetch user's inquiry for this product - USING THE SAME API AS MY-INQUIRIES PAGE
@@ -169,7 +172,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
     }
   };
 
-  const handleDirectBuyNow = async () => {
+  const handleDirectBuyNow = () => {
     if (!isAuthenticated) {
       toast({
         title: 'Login Required',
@@ -190,6 +193,12 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
       return;
     }
 
+    // Show payment gateway selection modal
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentGatewaySelect = async (gateway: 'payu' | 'sabpaisa' | 'airpay') => {
+    setSelectedGateway(gateway);
     setBuyNowLoading(true);
 
     try {
@@ -201,9 +210,19 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
         unit: product.unit,
         price_per_unit: product.price,
         total_amount: totalAmount,
+        gateway: gateway,
       };
 
-      const response = await fetch('https://www.mandi.ramhotravels.com/api/initiate-payment', {
+      let endpoint = '';
+      if (gateway === 'payu') {
+        endpoint = 'https://www.mandi.ramhotravels.com/api/initiate-payu-payment';
+      } else if (gateway === 'sabpaisa') {
+        endpoint = 'https://www.mandi.ramhotravels.com/api/initiate-sabpaisa-payment';
+      } else if (gateway === 'airpay') {
+        endpoint = 'https://www.mandi.ramhotravels.com/api/initiate-payment'; // Airpay
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -218,8 +237,10 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
 
       const data = await response.json();
 
-      if (data.airpay_url) {
-        window.location.href = data.airpay_url;
+      // Redirect to payment gateway
+      if (data.payment_url || data.airpay_url || data.url) {
+        const paymentUrl = data.payment_url || data.airpay_url || data.url;
+        window.location.href = paymentUrl;
       } else {
         throw new Error('No payment URL received');
       }
@@ -230,8 +251,10 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
         description: 'Failed to initiate payment. Please try again.',
         variant: 'destructive',
       });
+      setShowPaymentModal(false);
     } finally {
       setBuyNowLoading(false);
+      setSelectedGateway(null);
     }
   };
 
@@ -832,6 +855,82 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
           inquiryId={userInquiry.id}
         />
       )}
+
+      {/* Payment Gateway Selection Modal */}
+      <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Payment Gateway</DialogTitle>
+            <DialogDescription>
+              Choose your preferred payment method to complete the purchase of ₹{(product.price * quantity).toLocaleString('en-IN')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            {/* PayU */}
+            <Button
+              onClick={() => handlePaymentGatewaySelect('payu')}
+              disabled={buyNowLoading}
+              variant="outline"
+              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5"
+            >
+              <div className="flex items-center gap-3 w-full">
+                <div className="bg-green-100 dark:bg-green-900 p-2 rounded">
+                  <CreditCard className="h-6 w-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-semibold text-base">PayU</p>
+                  <p className="text-xs text-muted-foreground">Credit/Debit Card, UPI, Net Banking</p>
+                </div>
+                {buyNowLoading && selectedGateway === 'payu' && (
+                  <span className="text-xs text-muted-foreground">Processing...</span>
+                )}
+              </div>
+            </Button>
+
+            {/* SabPaisa */}
+            <Button
+              onClick={() => handlePaymentGatewaySelect('sabpaisa')}
+              disabled={buyNowLoading}
+              variant="outline"
+              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5"
+            >
+              <div className="flex items-center gap-3 w-full">
+                <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded">
+                  <CreditCard className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-semibold text-base">SabPaisa</p>
+                  <p className="text-xs text-muted-foreground">All Payment Methods</p>
+                </div>
+                {buyNowLoading && selectedGateway === 'sabpaisa' && (
+                  <span className="text-xs text-muted-foreground">Processing...</span>
+                )}
+              </div>
+            </Button>
+
+            {/* Airpay */}
+            <Button
+              onClick={() => handlePaymentGatewaySelect('airpay')}
+              disabled={buyNowLoading}
+              variant="outline"
+              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5"
+            >
+              <div className="flex items-center gap-3 w-full">
+                <div className="bg-purple-100 dark:bg-purple-900 p-2 rounded">
+                  <CreditCard className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-semibold text-base">Airpay</p>
+                  <p className="text-xs text-muted-foreground">UPI, Cards, Wallets</p>
+                </div>
+                {buyNowLoading && selectedGateway === 'airpay' && (
+                  <span className="text-xs text-muted-foreground">Processing...</span>
+                )}
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
