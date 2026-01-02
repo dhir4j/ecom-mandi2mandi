@@ -232,27 +232,44 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
       });
 
       if (!response.ok) {
-        throw new Error('Failed to initiate payment');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to initiate payment');
       }
 
       const data = await response.json();
+      console.log(`${gateway.toUpperCase()} Response:`, data);
 
-      // Redirect to payment gateway
-      if (data.payment_url || data.airpay_url || data.url) {
-        const paymentUrl = data.payment_url || data.airpay_url || data.url;
-        window.location.href = paymentUrl;
-      } else {
-        throw new Error('No payment URL received');
+      if (!data.payment_url) {
+        throw new Error('No payment URL received from server');
       }
+
+      // Create a form and submit it to the payment gateway
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = data.payment_url;
+
+      // Add all parameters to the form
+      Object.keys(data).forEach((key) => {
+        if (key !== 'payment_url') {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = key;
+          input.value = data[key];
+          form.appendChild(input);
+        }
+      });
+
+      document.body.appendChild(form);
+      console.log(`Submitting ${gateway.toUpperCase()} payment form to:`, data.payment_url);
+      form.submit();
     } catch (error) {
       console.error('Payment error:', error);
       toast({
         title: 'Payment Error',
-        description: 'Failed to initiate payment. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to initiate payment. Please try again.',
         variant: 'destructive',
       });
       setShowPaymentModal(false);
-    } finally {
       setBuyNowLoading(false);
       setSelectedGateway(null);
     }

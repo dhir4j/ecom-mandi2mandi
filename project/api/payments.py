@@ -273,6 +273,7 @@ def initiate_payment():
     try:
         if gateway == 'sabpaisa':
             # SabPaisa payment gateway
+            print(f"[SABPAISA] Processing payment for txnid: {txnid}")
             client_code = current_app.config['SABPAISA_CLIENT_CODE']
 
             # Sanitize payer name to remove special characters
@@ -299,16 +300,20 @@ def initiate_payment():
                 current_app.config['SABPAISA_AUTH_IV']
             )
 
+            print(f"[SABPAISA] Payment URL: {current_app.config['SABPAISA_BASE_URL']}")
+
             return jsonify({
                 'payment_url': current_app.config['SABPAISA_BASE_URL'],
                 'encData': enc_data,
                 'clientCode': client_code
             })
+
         elif gateway == 'airpay':
-            # Airpay V4 payment gateway
+            # Airpay V4 payment gateway with OAuth2
+            print(f"[AIRPAY] Processing payment for txnid: {txnid}")
             buyer_first_name, buyer_last_name = split_name_for_airpay(current_user.name)
 
-            # Build Airpay V4 payment request
+            # Build Airpay V4 payment request (this gets OAuth2 token internally)
             airpay_params = build_airpay_request(
                 buyer_email=current_user.email or "",
                 buyer_first_name=buyer_first_name,
@@ -331,9 +336,17 @@ def initiate_payment():
                 client_secret=current_app.config['AIRPAY_CLIENT_SECRET'],
             )
 
-            return jsonify(airpay_params)
+            print(f"[AIRPAY] Payment URL: {airpay_params.get('airpay_url', 'N/A')}")
+
+            # Return with payment_url field for frontend compatibility
+            response = airpay_params.copy()
+            response['payment_url'] = response.get('airpay_url', '')
+            return jsonify(response)
+
         else:
             # PayU payment gateway (default)
+            print(f"[PAYU] Processing payment for txnid: {txnid}")
+
             payu_params = {
                 'key': current_app.config['PAYU_KEY'],
                 'txnid': txnid,
@@ -348,13 +361,30 @@ def initiate_payment():
 
             # Generate hash
             payment_hash = generate_hash(payu_params, current_app.config['PAYU_SALT'])
+            payu_params['hash'] = payment_hash
+
+            payment_url = 'https://secure.payu.in/_payment'
+            print(f"[PAYU] Payment URL: {payment_url}")
+            print(f"[PAYU] Amount: {payu_params['amount']}, Product: {payu_params['productinfo']}")
 
             return jsonify({
-                'payment_url': 'https://secure.payu.in/_payment',
-                'payu_params': payu_params,
+                'payment_url': payment_url,
+                'key': payu_params['key'],
+                'txnid': payu_params['txnid'],
+                'amount': payu_params['amount'],
+                'productinfo': payu_params['productinfo'],
+                'firstname': payu_params['firstname'],
+                'email': payu_params['email'],
+                'phone': payu_params['phone'],
+                'surl': payu_params['surl'],
+                'furl': payu_params['furl'],
                 'hash': payment_hash
             })
+
     except Exception as e:
+        print(f"[PAYMENT ERROR] {gateway.upper()} payment failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @payments_bp.route('/initiate-cart-payment', methods=['POST'])
