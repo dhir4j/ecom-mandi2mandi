@@ -12,10 +12,23 @@ cart_bp = Blueprint('cart', __name__)
 
 MINIMUM_QUANTITY = 2000
 
-@cart_bp.route('/api/cart', methods=['GET'])
-@login_required
+@cart_bp.route('/api/cart', methods=['GET', 'OPTIONS'])
 def get_cart():
     """Get current user's cart with all items"""
+    # Handle OPTIONS preflight request
+    from flask import make_response
+    if request.method == 'OPTIONS':
+        response = make_response('', 204)
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    # Check authentication for actual GET request
+    if not current_user.is_authenticated:
+        return jsonify({"error": "Authentication required"}), 401
+
     try:
         cart = Cart.query.filter_by(user_id=current_user.id).first()
 
@@ -37,10 +50,23 @@ def get_cart():
         }), 500
 
 
-@cart_bp.route('/api/cart/add', methods=['POST'])
-@login_required
+@cart_bp.route('/api/cart/add', methods=['POST', 'OPTIONS'])
 def add_to_cart():
     """Add item to cart or update quantity if already exists"""
+    # Handle OPTIONS preflight request
+    from flask import make_response
+    if request.method == 'OPTIONS':
+        response = make_response('', 204)
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    # Check authentication for actual POST request
+    if not current_user.is_authenticated:
+        return jsonify({"error": "Authentication required"}), 401
+
     try:
         data = request.get_json()
 

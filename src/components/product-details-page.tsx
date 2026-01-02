@@ -871,14 +871,14 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
               onClick={() => handlePaymentGatewaySelect('payu')}
               disabled={buyNowLoading}
               variant="outline"
-              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5"
+              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5 text-foreground"
             >
               <div className="flex items-center gap-3 w-full">
                 <div className="bg-green-100 dark:bg-green-900 p-2 rounded">
                   <CreditCard className="h-6 w-6 text-green-600 dark:text-green-400" />
                 </div>
                 <div className="text-left flex-1">
-                  <p className="font-semibold text-base">PayU</p>
+                  <p className="font-semibold text-base text-foreground">PayU</p>
                   <p className="text-xs text-muted-foreground">Credit/Debit Card, UPI, Net Banking</p>
                 </div>
                 {buyNowLoading && selectedGateway === 'payu' && (
@@ -892,14 +892,14 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
               onClick={() => handlePaymentGatewaySelect('sabpaisa')}
               disabled={buyNowLoading}
               variant="outline"
-              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5"
+              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5 text-foreground"
             >
               <div className="flex items-center gap-3 w-full">
                 <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded">
                   <CreditCard className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div className="text-left flex-1">
-                  <p className="font-semibold text-base">SabPaisa</p>
+                  <p className="font-semibold text-base text-foreground">SabPaisa</p>
                   <p className="text-xs text-muted-foreground">All Payment Methods</p>
                 </div>
                 {buyNowLoading && selectedGateway === 'sabpaisa' && (
@@ -913,14 +913,14 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
               onClick={() => handlePaymentGatewaySelect('airpay')}
               disabled={buyNowLoading}
               variant="outline"
-              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5"
+              className="h-20 flex flex-col items-start justify-center border-2 hover:border-primary hover:bg-primary/5 text-foreground"
             >
               <div className="flex items-center gap-3 w-full">
                 <div className="bg-purple-100 dark:bg-purple-900 p-2 rounded">
                   <CreditCard className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div className="text-left flex-1">
-                  <p className="font-semibold text-base">Airpay</p>
+                  <p className="font-semibold text-base text-foreground">Airpay</p>
                   <p className="text-xs text-muted-foreground">UPI, Cards, Wallets</p>
                 </div>
                 {buyNowLoading && selectedGateway === 'airpay' && (

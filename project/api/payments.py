@@ -200,21 +200,47 @@ def verify_hash(params, salt):
     hash_string = f"{salt}|{params.get('status')}||||||||||{udf10}|{udf9}|{udf8}|{udf7}|{udf6}|{udf5}|{udf4}|{udf3}|{udf2}|{udf1}|{params.get('email')}|{params.get('firstname')}|{params.get('productinfo')}|{params.get('amount')}|{params.get('txnid')}|{params.get('key')}"
     return hashlib.sha512(hash_string.encode('utf-8')).hexdigest().lower()
 
-@payments_bp.route('/initiate-payment', methods=['POST'])
-@login_required
+@payments_bp.route('/initiate-payu-payment', methods=['POST', 'OPTIONS'])
+@payments_bp.route('/initiate-sabpaisa-payment', methods=['POST', 'OPTIONS'])
+@payments_bp.route('/initiate-payment', methods=['POST', 'OPTIONS'])
 def initiate_payment():
+    """
+    Initiate direct product purchase payment
+    Supports PayU, SabPaisa, and Airpay gateways
+    Route determines gateway:
+    - /initiate-payu-payment -> PayU
+    - /initiate-sabpaisa-payment -> SabPaisa
+    - /initiate-payment -> Airpay (legacy route)
+    """
+    # Handle OPTIONS preflight request
+    from flask import make_response
+    if request.method == 'OPTIONS':
+        response = make_response('', 204)
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    # Check authentication for actual POST request
+    if not current_user.is_authenticated:
+        return jsonify({"error": "Authentication required"}), 401
+
     data = request.get_json()
 
-    required_fields = [
-        'amount', 'productName', 'quantity', 'unit', 'totalPrice',
-        'paymentOption', 'buyerName', 'mobile',
-        'pincode', 'addressLine1', 'city', 'state'
-    ]
-    if not all(field in data for field in required_fields):
-        return jsonify({"error": "Missing required fields"}), 400
+    # Determine gateway from the route
+    if 'initiate-payu-payment' in request.path:
+        gateway = 'payu'
+    elif 'initiate-sabpaisa-payment' in request.path:
+        gateway = 'sabpaisa'
+    else:
+        gateway = data.get('gateway', 'airpay').lower()
 
-    # Get selected gateway (default to PayU for backward compatibility)
-    gateway = data.get('gateway', 'payu').lower()
+    # For direct buy, we have simplified required fields
+    required_fields = ['product_id', 'product_name', 'quantity', 'unit', 'price_per_unit', 'total_amount']
+
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Missing required fields", "required": required_fields}), 400
 
     txnid = str(uuid.uuid4())
 
@@ -222,20 +248,20 @@ def initiate_payment():
     try:
         new_order = Order(
             user_id=current_user.id,
-            product_name=data['productName'],
+            product_name=data['product_name'],
             quantity=float(data['quantity']),
             unit=data['unit'],
-            total_price=float(data['totalPrice']),
-            amount_paid=float(data['amount']),
-            payment_option=data['paymentOption'],
-            utr_code=txnid, # Temporarily use txnid for UTR
-            buyer_name=data['buyerName'],
-            buyer_mobile=data['mobile'],
-            pincode=data['pincode'],
-            address_line_1=data['addressLine1'],
-            address_line_2=data.get('addressLine2', ''),
-            city=data['city'],
-            state=data['state'],
+            total_price=float(data['total_amount']),
+            amount_paid=float(data['total_amount']),
+            payment_option='Online',
+            utr_code=txnid,  # Temporarily use txnid for UTR
+            buyer_name=current_user.name or 'Customer',
+            buyer_mobile='',  # Will be updated after payment
+            pincode='',
+            address_line_1='Direct Buy',
+            address_line_2='',
+            city='',
+            state='',
             status='Pending'
         )
         db.session.add(new_order)
@@ -249,28 +275,22 @@ def initiate_payment():
             # SabPaisa payment gateway
             client_code = current_app.config['SABPAISA_CLIENT_CODE']
 
-            # Log for debugging
-            print(f"[SABPAISA DEBUG] Client Code: {client_code}")
-            print(f"[SABPAISA DEBUG] Base URL: {current_app.config['SABPAISA_BASE_URL']}")
-
             # Sanitize payer name to remove special characters
             sanitized_name = sanitize_payer_name(current_user.name)
 
-            # Build parameter string (clientCode must be in BOTH encData AND as separate form field)
+            # Build parameter string
             params_str = build_payment_request(
                 payer_name=sanitized_name,
                 payer_email=current_user.email,
-                payer_mobile=data['mobile'],
+                payer_mobile='0000000000',  # Placeholder
                 client_txn_id=txnid,
-                amount=float(data['amount']),
+                amount=float(data['total_amount']),
                 client_code=client_code,
                 trans_username=current_app.config['SABPAISA_USERNAME'],
                 trans_password=current_app.config['SABPAISA_PASSWORD'],
                 callback_url='https://www.mandi.ramhotravels.com/api/sabpaisa-payment-success',
-                udf1=data['productName']  # Store product name in UDF1
+                udf1=data['product_name']
             )
-
-            print(f"[SABPAISA DEBUG] Params string (first 200 chars): {params_str[:200]}")
 
             # Encrypt the request
             enc_data = create_encrypted_request(
@@ -279,34 +299,29 @@ def initiate_payment():
                 current_app.config['SABPAISA_AUTH_IV']
             )
 
-            print(f"[SABPAISA DEBUG] Encrypted data length: {len(enc_data)}")
-            print(f"[SABPAISA DEBUG] Encrypted data (first 50 chars): {enc_data[:50]}")
-
             return jsonify({
-                'gateway': 'sabpaisa',
-                'sabpaisa_url': current_app.config['SABPAISA_BASE_URL'],
+                'payment_url': current_app.config['SABPAISA_BASE_URL'],
                 'encData': enc_data,
                 'clientCode': client_code
             })
         elif gateway == 'airpay':
             # Airpay V4 payment gateway
-            # Split buyer name into first and last name (sanitized for Airpay)
             buyer_first_name, buyer_last_name = split_name_for_airpay(current_user.name)
 
-            # Build Airpay V4 payment request with OAuth2
+            # Build Airpay V4 payment request
             airpay_params = build_airpay_request(
                 buyer_email=current_user.email or "",
                 buyer_first_name=buyer_first_name,
                 buyer_last_name=buyer_last_name,
-                buyer_phone=data['mobile'],
-                buyer_address=data['addressLine1'],
-                buyer_city=data['city'],
-                buyer_state=data['state'],
+                buyer_phone='0000000000',  # Placeholder
+                buyer_address='Direct Buy',
+                buyer_city='Mumbai',
+                buyer_state='Maharashtra',
                 buyer_country='India',
-                buyer_pincode=data['pincode'],
-                amount=f"{float(data['amount']):.2f}",
+                buyer_pincode='400001',
+                amount=f"{float(data['total_amount']):.2f}",
                 order_id=txnid,
-                currency='356',  # INR currency code
+                currency='356',
                 iso_currency='INR',
                 merchant_id=current_app.config['AIRPAY_MERCHANT_ID'],
                 username=current_app.config['AIRPAY_USERNAME'],
@@ -316,32 +331,29 @@ def initiate_payment():
                 client_secret=current_app.config['AIRPAY_CLIENT_SECRET'],
             )
 
-            airpay_params['gateway'] = 'airpay'
-
             return jsonify(airpay_params)
         else:
             # PayU payment gateway (default)
             payu_params = {
                 'key': current_app.config['PAYU_KEY'],
                 'txnid': txnid,
-                'amount': str(data['amount']),
-                'productinfo': data['productName'],
-                'firstname': current_user.name,
+                'amount': str(data['total_amount']),
+                'productinfo': data['product_name'],
+                'firstname': current_user.name or 'Customer',
                 'email': current_user.email,
-                'phone': data['mobile'],
+                'phone': '0000000000',
                 'surl': 'https://www.mandi.ramhotravels.com/api/payment-success',
                 'furl': 'https://www.mandi.ramhotravels.com/api/payment-failure',
             }
 
             # Generate hash
             payment_hash = generate_hash(payu_params, current_app.config['PAYU_SALT'])
-            payu_params['hash'] = payment_hash
-            payu_params['gateway'] = 'payu'
 
-            # Use production URL
-            payu_params['payu_url'] = 'https://secure.payu.in/_payment'
-
-            return jsonify(payu_params)
+            return jsonify({
+                'payment_url': 'https://secure.payu.in/_payment',
+                'payu_params': payu_params,
+                'hash': payment_hash
+            })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
