@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 import uuid
 import hashlib
 import re
+import time
 from . import db
 from .models import Order, Inquiry, Cart, CartItem
 from .sabpaisa_utils import (
@@ -16,6 +17,29 @@ from .airpay_utils import (
 )
 
 payments_bp = Blueprint('payments', __name__)
+
+def generate_airpay_orderid():
+    """
+    Generate Airpay-compatible order ID
+    Airpay Requirements:
+    - NUMERIC only (no letters!)
+    - Length: 1-20 characters
+
+    Format: timestamp (13 digits) + random 6 digits = 19 digits total
+    Example: 1704567890123456789
+    """
+    import random
+
+    # Get current timestamp in milliseconds (13 digits)
+    timestamp_ms = int(time.time() * 1000)
+
+    # Add 6 random digits for uniqueness
+    random_digits = random.randint(100000, 999999)
+
+    # Combine: timestamp + random = 19 digits (within 20 char limit)
+    order_id = f"{timestamp_ms}{random_digits}"
+
+    return order_id
 
 def split_name_for_airpay(full_name):
     """
@@ -242,7 +266,21 @@ def initiate_payment():
     if not all(field in data for field in required_fields):
         return jsonify({"error": "Missing required fields", "required": required_fields}), 400
 
-    txnid = str(uuid.uuid4())
+    # Determine gateway from the route
+    if 'initiate-payu-payment' in request.path:
+        gateway = 'payu'
+    elif 'initiate-sabpaisa-payment' in request.path:
+        gateway = 'sabpaisa'
+    else:
+        gateway = data.get('gateway', 'airpay').lower()
+
+    # Generate txnid based on gateway requirements
+    # Airpay requires NUMERIC ONLY, max 20 digits
+    # Other gateways accept UUID format
+    if gateway == 'airpay':
+        txnid = generate_airpay_orderid()
+    else:
+        txnid = str(uuid.uuid4())
 
     # Create the order and save it to the DB with a 'Pending' status
     try:
@@ -431,7 +469,12 @@ def initiate_cart_payment():
         gateway = data.get('gateway', 'payu').lower()
 
         # Generate unique transaction ID for this cart checkout
-        txnid = str(uuid.uuid4())
+        # Airpay requires NUMERIC ONLY, max 20 digits
+        # Other gateways accept UUID format
+        if gateway == 'airpay':
+            txnid = generate_airpay_orderid()
+        else:
+            txnid = str(uuid.uuid4())
 
         # Calculate total amount
         total_amount = sum([item.quantity * item.price_per_unit for item in cart.items])
@@ -1231,3 +1274,105 @@ def airpay_subscription_payment_failure():
     except Exception as e:
         print(f"[AIRPAY V4 SUBSCRIPTION ERROR] Failure exception: {str(e)}")
         return redirect(f'https://mandi2mandi.com/payment/failed?reason={str(e)}')
+
+
+# ============================================
+# AIRPAY IPN (Instant Payment Notification)
+# Server-to-Server callback for pending transactions
+# ============================================
+
+@payments_bp.route('/airpay-ipn', methods=['POST', 'OPTIONS'])
+def airpay_ipn():
+    """
+    Handle Airpay IPN (Instant Payment Notification) - Server to Server
+    This receives notifications for pending/failed transactions that couldn't complete in real-time
+    Reference: https://sanctum.airpay.co.in - IPN Callback response
+    """
+    # Handle OPTIONS preflight
+    from flask import make_response
+    if request.method == 'OPTIONS':
+        response = make_response('', 204)
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    try:
+        # Get encrypted response from Airpay
+        airpay_data = request.form.to_dict()
+
+        print(f"\n{'='*60}")
+        print(f"[AIRPAY IPN] Received S2S notification")
+        print(f"{'='*60}")
+        print(f"[AIRPAY IPN] Form keys: {list(airpay_data.keys())}")
+
+        if not airpay_data or 'response' not in airpay_data:
+            print(f"[AIRPAY IPN ERROR] No response data received")
+            return jsonify({'status': 'error', 'message': 'No response data'}), 400
+
+        # Validate and decrypt the response
+        validation_result = validate_airpay_response(
+            airpay_data,
+            current_app.config['AIRPAY_MERCHANT_ID'],
+            current_app.config['AIRPAY_USERNAME'],
+            current_app.config['AIRPAY_PASSWORD']
+        )
+
+        if not validation_result['valid']:
+            error_msg = validation_result.get('error', 'Invalid response')
+            print(f"[AIRPAY IPN ERROR] Validation failed: {error_msg}")
+            return jsonify({'status': 'error', 'message': error_msg}), 400
+
+        # Extract transaction details
+        transaction_status = validation_result['status']
+        txnid = validation_result['transaction_id']
+        ap_txn_id = validation_result['ap_transaction_id']
+        amount = validation_result['amount']
+        message = validation_result['message']
+
+        print(f"[AIRPAY IPN] Transaction Details:")
+        print(f"  - TxnID: {txnid}")
+        print(f"  - Airpay TxnID: {ap_txn_id}")
+        print(f"  - Status: {transaction_status}")
+        print(f"  - Amount: {amount}")
+        print(f"  - Message: {message}")
+
+        # Update order status based on transaction status
+        order = Order.query.filter_by(utr_code=txnid).first()
+
+        if order:
+            print(f"[AIRPAY IPN] Found order ID: {order.id}")
+
+            if transaction_status == '200':  # Success (Airpay success code)
+                order.status = 'Booked'
+                order.utr_code = ap_txn_id  # Update with Airpay transaction ID
+
+                # Clear cart if this was a cart purchase
+                user_cart = Cart.query.filter_by(user_id=order.user_id).first()
+                if user_cart:
+                    CartItem.query.filter_by(cart_id=user_cart.id).delete()
+
+                print(f"[AIRPAY IPN] ✅ Order {order.id} marked as Booked")
+            else:  # Failed or other status
+                order.status = 'Failed'
+                print(f"[AIRPAY IPN] ❌ Order {order.id} marked as Failed (Status: {transaction_status})")
+
+            db.session.commit()
+            print(f"[AIRPAY IPN] Database updated successfully")
+        else:
+            print(f"[AIRPAY IPN WARNING] ⚠️  Order not found for txnid: {txnid}")
+
+        # Return success response to Airpay (must return 200 OK)
+        return jsonify({
+            'status': 'success',
+            'message': 'IPN processed successfully',
+            'txnid': txnid,
+            'order_status': order.status if order else 'not_found'
+        }), 200
+
+    except Exception as e:
+        print(f"[AIRPAY IPN ERROR] Exception occurred: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500

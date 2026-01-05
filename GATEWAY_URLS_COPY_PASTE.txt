@@ -1,0 +1,139 @@
+================================================================================
+AIRPAY GATEWAY CONFIGURATION - COPY & PASTE READY
+================================================================================
+Configure these URLs at: https://sanctum.airpay.co.in
+================================================================================
+
+1. DOMAIN URL (Initiation URL)
+================================================================================
+https://mandi2mandi.com
+
+
+2. SUCCESS RESPONSE URL (Redirect after successful payment)
+================================================================================
+https://www.mandi.ramhotravels.com/api/airpay-payment-success
+
+
+3. FAILURE RESPONSE URL (Redirect after failed payment)
+================================================================================
+https://www.mandi.ramhotravels.com/api/airpay-payment-failure
+
+
+4. IPN URL (Server-to-Server notification for pending transactions)
+================================================================================
+https://www.mandi.ramhotravels.com/api/airpay-ipn
+
+
+5. SUBSCRIPTION SUCCESS URL (For subscription payments)
+================================================================================
+https://www.mandi.ramhotravels.com/api/airpay-subscription-success
+
+
+6. SUBSCRIPTION FAILURE URL (For subscription payments)
+================================================================================
+https://www.mandi.ramhotravels.com/api/airpay-subscription-failure
+
+
+================================================================================
+ADDITIONAL INFORMATION
+================================================================================
+
+All endpoints:
+- Use HTTPS (SSL/TLS encrypted)
+- Accept POST method
+- Receive encrypted data in 'response' parameter
+- Return JSON or redirect response
+- Support CORS for cross-origin requests
+
+Request Format:
+POST <url>
+Content-Type: application/x-www-form-urlencoded
+response=<encrypted_data>
+
+Response Format:
+IPN endpoint returns JSON:
+{
+  "status": "success",
+  "message": "IPN processed successfully",
+  "txnid": "<transaction_id>",
+  "order_status": "Booked"
+}
+
+Success/Failure endpoints redirect user to:
+https://mandi2mandi.com/confirmation?status=success&txnid=<txn_id>
+https://mandi2mandi.com/confirmation?status=failed&txnid=<txn_id>
+
+================================================================================
+QUICK REFERENCE TABLE
+================================================================================
+
+Type                    | URL
+-----------------------|----------------------------------------------------
+Domain                 | https://mandi2mandi.com
+Success Response       | https://www.mandi.ramhotravels.com/api/airpay-payment-success
+Failure Response       | https://www.mandi.ramhotravels.com/api/airpay-payment-failure
+IPN (S2S)              | https://www.mandi.ramhotravels.com/api/airpay-ipn
+Subscription Success   | https://www.mandi.ramhotravels.com/api/airpay-subscription-success
+Subscription Failure   | https://www.mandi.ramhotravels.com/api/airpay-subscription-failure
+
+================================================================================
+IMPLEMENTATION STATUS
+================================================================================
+
+✅ Domain URL - Active
+✅ Success Response URL - Implemented & Deployed
+✅ Failure Response URL - Implemented & Deployed
+✅ IPN URL - Implemented (READY TO DEPLOY)
+✅ Subscription Success - Implemented & Deployed
+✅ Subscription Failure - Implemented & Deployed
+
+================================================================================
+DEPLOYMENT CHECKLIST
+================================================================================
+
+Before configuring at Airpay portal:
+[ ] Deploy IPN endpoint to PythonAnywhere
+[ ] Verify SSL certificate is valid on all URLs
+[ ] Test each endpoint manually
+[ ] Check backend logs are accessible
+[ ] Verify database connectivity
+
+After configuring at Airpay portal:
+[ ] Make a test transaction (₹1)
+[ ] Verify success callback works
+[ ] Simulate network failure to test IPN
+[ ] Check order status updates in database
+[ ] Monitor backend logs for any errors
+
+================================================================================
+SUPPORT & TESTING
+================================================================================
+
+Test IPN endpoint manually:
+curl -X POST https://www.mandi.ramhotravels.com/api/airpay-ipn \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "response=test_data"
+
+Check backend logs:
+PythonAnywhere → Web → Log files → Error log
+Look for: [AIRPAY IPN] messages
+
+Airpay Support:
+Email: support@airpay.in
+Portal: https://sanctum.airpay.co.in
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+1. IPN is critical for handling network failures
+2. All URLs must use HTTPS (not HTTP)
+3. Response must be decrypted using Airpay credentials
+4. Checksum must be validated before processing
+5. Return 200 OK from IPN endpoint for Airpay to mark as delivered
+6. Failed IPN will be retried by Airpay multiple times
+
+================================================================================
+Generated: 2026-01-02
+Valid for: mandi2mandi.com / www.mandi.ramhotravels.com
+================================================================================

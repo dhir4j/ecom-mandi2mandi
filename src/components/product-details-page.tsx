@@ -38,7 +38,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
-  const { addToCart, minimumAmount } = useCart();
+  const { addToCart } = useCart();
   const [selectedImage, setSelectedImage] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
@@ -135,16 +135,6 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
       return;
     }
 
-    const totalAmount = quantity * product.price;
-    if (totalAmount < minimumAmount) {
-      toast({
-        title: 'Minimum Amount Required',
-        description: `Minimum purchase amount is ₹${minimumAmount}. Current: ₹${totalAmount.toLocaleString('en-IN')}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setLoading(true);
     const result = await addToCart({
       productId: product.id,
@@ -181,16 +171,6 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
         variant: 'destructive',
       });
       router.push('/login');
-      return;
-    }
-
-    const totalAmount = quantity * product.price;
-    if (totalAmount < minimumAmount) {
-      toast({
-        title: 'Minimum Amount Required',
-        description: `Minimum purchase amount is ₹${minimumAmount}. Current: ₹${totalAmount.toLocaleString('en-IN')}`,
-        variant: 'destructive',
-      });
       return;
     }
 
@@ -751,7 +731,7 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
                     {/* Quantity Selector */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
-                        Quantity (Min Amount: ₹{minimumAmount})
+                        Quantity
                       </label>
                       <div className="flex items-center gap-3">
                         <Button
@@ -781,11 +761,6 @@ export function ProductDetailsPage({ product, relatedProducts }: ProductDetailsP
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Total: ₹{(product.price * quantity).toLocaleString('en-IN')}
-                        {(product.price * quantity) < minimumAmount && (
-                          <span className="text-destructive ml-2">
-                            (Need ₹{(minimumAmount - product.price * quantity).toLocaleString('en-IN')} more)
-                          </span>
-                        )}
                       </p>
                     </div>
 

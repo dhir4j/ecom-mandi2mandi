@@ -1,13 +1,15 @@
 
 'use client';
 
-import { Menu, Leaf, LogOut, Shield } from 'lucide-react';
+import { Menu, Leaf, LogOut, Shield, ShoppingCart, User, Package, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from './ui/button';
 import { ThemeToggle } from './theme-toggle';
 import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
+import { useCart } from '@/contexts/CartContext';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +21,7 @@ import {
 
 export function Header({ className }: { className?: string }) {
   const { isAuthenticated, user, logout } = useAuth();
+  const { cartCount } = useCart();
   const isPrivilegedUser = user?.role === 'trader';
   const isAdmin = user?.role === 'admin';
 
@@ -125,9 +128,22 @@ export function Header({ className }: { className?: string }) {
                       <Link href="/dashboard">Dashboard</Link>
                     </Button>
                   )}
+                  {/* Cart Button */}
+                  <Button variant="ghost" size="icon" asChild className="relative">
+                    <Link href="/cart">
+                      <ShoppingCart className="h-5 w-5" />
+                      {cartCount > 0 && (
+                        <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
+                          {cartCount}
+                        </Badge>
+                      )}
+                      <span className="sr-only">Cart ({cartCount} items)</span>
+                    </Link>
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline">
+                        <User className="mr-2 h-4 w-4" />
                         My Account
                       </Button>
                     </DropdownMenuTrigger>
@@ -142,13 +158,33 @@ export function Header({ className }: { className?: string }) {
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
-                        <Link href="/account" className="w-full cursor-pointer">My Account</Link>
+                        <Link href="/account" className="w-full cursor-pointer">
+                          <User className="mr-2 h-4 w-4" />
+                          My Profile
+                        </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <Link href="/my-inquiries" className="w-full cursor-pointer">My Inquiries</Link>
+                        <Link href="/cart" className="w-full cursor-pointer">
+                          <ShoppingCart className="mr-2 h-4 w-4" />
+                          My Cart
+                          {cartCount > 0 && (
+                            <Badge variant="secondary" className="ml-auto">
+                              {cartCount}
+                            </Badge>
+                          )}
+                        </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <Link href="/my-orders" className="w-full cursor-pointer">My Orders</Link>
+                        <Link href="/my-orders" className="w-full cursor-pointer">
+                          <Package className="mr-2 h-4 w-4" />
+                          Order History
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/my-inquiries" className="w-full cursor-pointer">
+                          <FileText className="mr-2 h-4 w-4" />
+                          My Inquiries
+                        </Link>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive">
@@ -217,13 +253,33 @@ export function Header({ className }: { className?: string }) {
                             </SheetClose>
                           )}
                           <SheetClose asChild>
-                            <Link href="/account" className="text-lg font-medium text-muted-foreground hover:text-foreground">My Account</Link>
+                            <Link href="/account" className="text-lg font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+                              <User className="h-5 w-5" />
+                              My Profile
+                            </Link>
                           </SheetClose>
                           <SheetClose asChild>
-                            <Link href="/my-inquiries" className="text-lg font-medium text-muted-foreground hover:text-foreground">My Inquiries</Link>
+                            <Link href="/cart" className="text-lg font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+                              <ShoppingCart className="h-5 w-5" />
+                              My Cart
+                              {cartCount > 0 && (
+                                <Badge variant="secondary" className="ml-auto">
+                                  {cartCount}
+                                </Badge>
+                              )}
+                            </Link>
                           </SheetClose>
                           <SheetClose asChild>
-                            <Link href="/my-orders" className="text-lg font-medium text-muted-foreground hover:text-foreground">My Orders</Link>
+                            <Link href="/my-orders" className="text-lg font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+                              <Package className="h-5 w-5" />
+                              Order History
+                            </Link>
+                          </SheetClose>
+                          <SheetClose asChild>
+                            <Link href="/my-inquiries" className="text-lg font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+                              <FileText className="h-5 w-5" />
+                              My Inquiries
+                            </Link>
                           </SheetClose>
                         </>
                       )}

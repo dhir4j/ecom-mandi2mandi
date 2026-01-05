@@ -285,6 +285,26 @@ def build_payment_request(
 
     print(f"[AIRPAY V4 DEBUG] Sanitized buyer_phone: {buyer_phone}")
 
+    # Validate order_id according to Airpay specification
+    # Airpay requirements: NUMERIC ONLY, length 1-20 characters
+    order_id_str = str(order_id).strip()
+
+    # Remove any non-numeric characters
+    order_id_numeric = ''.join(filter(str.isdigit, order_id_str))
+
+    # Validate order_id
+    if not order_id_numeric or len(order_id_numeric) == 0:
+        raise Exception("Order ID must contain numeric characters")
+
+    if len(order_id_numeric) > 20:
+        raise Exception(f"Order ID exceeds maximum length of 20 digits (got {len(order_id_numeric)} digits)")
+
+    if len(order_id_numeric) < 1:
+        raise Exception("Order ID must be at least 1 digit")
+
+    order_id = order_id_numeric
+    print(f"[AIRPAY V4 DEBUG] Validated order_id (numeric, {len(order_id)} digits): {order_id}")
+
     # Step 1: Get OAuth2 access token
     print(f"[AIRPAY V4 DEBUG] Getting OAuth2 token...")
     access_token = get_oauth2_token(merchant_id, username, password, client_id, client_secret)
@@ -295,7 +315,11 @@ def build_payment_request(
     print(f"[AIRPAY V4 DEBUG] Got access token: {access_token[:20]}...")
 
     # Step 2: Prepare payment data
-    mer_dom = base64.b64encode(b'http://track.airpay.co.in').decode('utf-8')
+    # IMPORTANT: Use the BACKEND domain where payment API is hosted
+    # This must match the domain you registered in Airpay merchant portal (sanctum.airpay.co.in)
+    # Backend: https://www.mandi.ramhotravels.com (where payment initiation happens)
+    # Frontend: https://mandi2mandi.com (user-facing website)
+    mer_dom = base64.b64encode(b'https://www.mandi.ramhotravels.com').decode('utf-8')
 
     post_data = {
         'buyer_email': buyer_email,
